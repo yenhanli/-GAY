@@ -8,6 +8,7 @@ function createPlayer(id, x, y) {
     y,
     r: CONFIG.player.radius,
     hp: CONFIG.player.hp,
+    maxHp: CONFIG.player.hp,
     angle: 0,          // 面向哪個方向（弧度），0 是正右邊
     super: 0,
     boostTime: 0,      // 加速還剩幾秒
@@ -46,7 +47,7 @@ const Player = {
     // 回血：太久沒被打到就慢慢補
     p.sinceHit += dt;
     if (p.sinceHit >= CONFIG.player.regenDelay) {
-      p.hp = Math.min(CONFIG.player.hp, p.hp + CONFIG.player.regenPerSec * dt);
+      p.hp = Math.min(p.maxHp, p.hp + CONFIG.player.regenPerSec * dt);
     }
 
     // 方向鍵 → 方向

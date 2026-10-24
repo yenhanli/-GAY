@@ -36,7 +36,18 @@ const CONFIG = {
   boost: {
     speedMul: 1.6,   // 速度變幾倍
     duration: 1.5,   // 加速幾秒
-    cooldown: 3,     // 一塊用完要等幾秒才能再踩
+    cooldown: 1.5,   // 一塊用完要等幾秒才能再踩
+  },
+
+  // 回合
+  round: {
+    winsNeeded: 3,       // 先贏幾回合就贏整局（搶三）
+    time: 60,            // 每回合限時幾秒
+    countdown: 3,        // 開打前倒數幾秒
+    between: 2,          // 回合結束後顯示誰贏幾秒，再開下一回合
+    zoneStart: 15,       // 剩幾秒時開始縮圈
+    zoneEndRadius: 160,  // 縮到多小（六角形中心到角）
+    zoneDamage: 15,      // 站在圈外每秒扣多少血
   },
 
   // 場地

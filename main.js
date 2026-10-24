@@ -20,12 +20,39 @@ let lastInputText = '';  // 對手：上次送出的按鍵，沒變就不送
 
 // ===== 畫面切換 =====
 
-const screens = ['home', 'waiting', 'message'];
+const screens = ['home', 'waiting', 'result', 'message'];
+let currentScreen = 'home';
 function showScreen(id) {
+  currentScreen = id;
   for (const s of screens) {
     document.getElementById(s).classList.toggle('hidden', s !== id);
   }
 }
+
+// 整局結束就跳結算畫面，重開了就關掉
+function syncResultScreen() {
+  const want = Round.phase === 'matchEnd' ? 'result' : null;
+  if (currentScreen !== want) showScreen(want);
+  if (want !== 'result') return;
+
+  const otherId = myId === 'host' ? 'guest' : 'host';
+  const won = Round.matchWinner === myId;
+  document.getElementById('resultTitle').textContent = won ? '你贏了！' : '你輸了⋯';
+  document.getElementById('resultScore').textContent = Round.scores[myId] + ' ： ' + Round.scores[otherId];
+  const pressed = Round.rematch[myId];
+  document.getElementById('btnRematch').disabled = pressed;
+  document.getElementById('rematchHint').textContent = pressed
+    ? '等對手按「再來一局」⋯'
+    : Round.rematch[otherId] ? '對手想再來一局！' : '';
+}
+
+document.getElementById('btnRematch').onclick = () => {
+  if (mode === 'host') Round.pressRematch('host');
+  if (mode === 'guest') {
+    Round.rematch.guest = true;   // 先在自己這邊顯示「等對手」，房主下次送狀態就會確認
+    Net.send({ t: 'rematch' });
+  }
+};
 
 function showHomeError(text) {
   document.getElementById('homeError').textContent = text;
@@ -77,6 +104,7 @@ Net.onMessage = (msg) => {
   }
   if (msg.t === 'state' && mode === 'guest') applyState(msg);
   if (msg.t === 'hit' && mode === 'guest') showHit(msg.id, msg.dmg);
+  if (msg.t === 'rematch' && mode === 'host') Round.pressRematch('guest');
 };
 
 // ===== 開打 =====
@@ -84,6 +112,15 @@ Net.onMessage = (msg) => {
 function startMatch(asHost) {
   mode = asHost ? 'host' : 'guest';
   myId = asHost ? 'host' : 'guest';
+  sendTimer = 0;
+  heartbeatTimer = 0;
+  lastInputText = '';
+  Round.resetMatch();   // 比數歸零、開第一回合（會呼叫下面的 resetField）
+  showScreen(null);
+}
+
+// 每回合開始：兩個人回出生點、血補滿，清掉場上的子彈
+function resetField() {
   const D = CONFIG.arena.spawnDistance;
   players = {
     host: createPlayer('host', -D, 0),     // 房主在左邊
@@ -95,10 +132,7 @@ function startMatch(asHost) {
   Bullets.list = [];
   Hud.popups = [];
   Input.shootPressed = false;
-  sendTimer = 0;
-  heartbeatTimer = 0;
-  lastInputText = '';
-  showScreen(null);
+  Net.remoteInput.shootPressed = false;
 }
 
 // 對手斷線：剩下的人獲勝，回首頁
@@ -134,27 +168,27 @@ function onBulletHit(bullet, p) {
   Net.send({ t: 'hit', id: p.id, dmg });
 }
 
-// 暫時的：倒下 3 秒後回出生點、血補滿。M5 做回合以後改成「這回合結束」
-const TEMP_RESPAWN_TIME = 3;
-function tempRespawn(dt) {
-  for (const p of Object.values(players)) {
-    if (!p.dead) continue;
-    p.deadTime = (p.deadTime || 0) + dt;
-    if (p.deadTime >= TEMP_RESPAWN_TIME) {
-      const D = CONFIG.arena.spawnDistance;
-      Object.assign(p, createPlayer(p.id, p.id === 'host' ? -D : D, 0));
-    }
-  }
+// 還沒開打（倒數、回合結束、整局結束）：不能動、不能射，只能轉頭瞄準
+function aimOnly(p, input, dt) {
+  if (p.flash > 0) p.flash -= dt;
+  p.angle = Math.atan2(input.mouseY - p.y, input.mouseX - p.x);
+  input.shootPressed = false;
 }
 
 function updateHost(dt) {
   Arena.update(dt);
-  Player.update(players.host, Input, dt);
-  Player.update(players.guest, Net.remoteInput, dt);
-  // 倒下的人不會再被打中
-  const alive = Object.values(players).filter((p) => !p.dead);
-  Bullets.update(dt, alive, onBulletHit);
-  tempRespawn(dt);
+  if (Round.phase === 'fight') {
+    Player.update(players.host, Input, dt);
+    Player.update(players.guest, Net.remoteInput, dt);
+    // 倒下的人不會再被打中
+    const alive = Object.values(players).filter((p) => !p.dead);
+    Bullets.update(dt, alive, onBulletHit);
+  } else {
+    aimOnly(players.host, Input, dt);
+    aimOnly(players.guest, Net.remoteInput, dt);
+    Bullets.update(dt, [], null);   // 還在飛的子彈飛完
+  }
+  Round.update(dt);
 
   sendTimer -= dt;
   if (sendTimer <= 0) {
@@ -168,6 +202,7 @@ function makeState() {
   const guestSeesHost = canSee(players.guest, players.host);
   return {
     t: 'state',
+    round: Round.pack(),
     host: packPlayer(players.host, guestSeesHost),
     guest: packPlayer(players.guest, true),
     boosts: Arena.tiles.filter((t) => t.type === 'boost').map((t) => Math.max(0, Math.round(t.cooldown * 10) / 10)),
@@ -198,6 +233,7 @@ function packPlayer(p, visible) {
 // ===== 對手 =====
 
 function applyState(msg) {
+  Object.assign(Round, msg.round);
   for (const id of ['host', 'guest']) {
     const p = players[id];
     const s = msg[id];
@@ -272,6 +308,7 @@ function update(dt) {
   if (mode === 'host') updateHost(dt);
   if (mode === 'guest') updateGuest(dt);
   Hud.update(dt);
+  syncResultScreen();
 }
 
 function draw() {
@@ -283,6 +320,7 @@ function draw() {
   ctx.translate(canvas.width / 2, canvas.height / 2);
   Arena.drawGround(ctx);
   Arena.drawGrass(ctx);
+  if (mode !== 'home') Arena.drawZone(ctx, Round.zone);
 
   if (mode !== 'home') {
     const me = players[myId];
@@ -297,6 +335,12 @@ function draw() {
     Hud.drawPopups(ctx);
   }
   ctx.restore();
+
+  // 比數和大字畫在畫面座標
+  if (mode !== 'home') {
+    Hud.drawScore(ctx, myId);
+    Hud.drawCenterText(ctx, myId);
+  }
 }
 
 let last = performance.now();

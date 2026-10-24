@@ -84,8 +84,8 @@ const Arena = {
 
   // 點 (x,y) 有沒有在六角形裡面；margin = 離邊界至少要多遠
   // 六角形是平頂的：左右兩個尖角，上下是平邊
-  insideHex(x, y, margin) {
-    const R = CONFIG.arena.radius;
+  // R 是六角形大小，沒給就是整個場地（縮圈時會給比較小的）
+  insideHex(x, y, margin, R = CONFIG.arena.radius) {
     return Math.abs(y) <= (R * SQRT3) / 2 - margin &&
            SQRT3 * Math.abs(x) + Math.abs(y) <= SQRT3 * R - 2 * margin;
   },
@@ -121,14 +121,35 @@ const Arena = {
 
   // ===== 畫圖 =====
 
-  hexPath(ctx) {
-    const R = CONFIG.arena.radius;
+  hexPath(ctx, R = CONFIG.arena.radius) {
     ctx.beginPath();
-    for (let i = 0; i < 6; i++) {
+    this.addHex(ctx, R);
+  },
+
+  addHex(ctx, R) {
+    ctx.moveTo(R, 0);
+    for (let i = 1; i < 6; i++) {
       const a = (Math.PI / 3) * i;
       ctx.lineTo(Math.cos(a) * R, Math.sin(a) * R);
     }
     ctx.closePath();
+  },
+
+  // 縮圈：安全區外面塗紅色，邊界畫紅線
+  drawZone(ctx, zoneR) {
+    if (zoneR >= CONFIG.arena.radius) return;
+    ctx.save();
+    ctx.beginPath();
+    this.addHex(ctx, CONFIG.arena.radius);
+    this.addHex(ctx, zoneR);
+    ctx.fillStyle = 'rgba(220, 40, 40, 0.28)';
+    ctx.fill('evenodd');   // 大六角形挖掉小六角形，只塗中間那圈
+    this.hexPath(ctx, zoneR);
+    ctx.lineWidth = 4;
+    ctx.setLineDash([12, 8]);
+    ctx.strokeStyle = '#d42828';
+    ctx.stroke();
+    ctx.restore();
   },
 
   // 地板、加速板、牆（畫在小人下面）
