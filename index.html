@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>六格小人亂鬥</title>
+  <style>
+    html, body {
+      margin: 0;
+      height: 100%;
+      background: #1d1f2b;
+      overflow: hidden;
+      font-family: system-ui, "Microsoft JhengHei", sans-serif;
+      color: #f4ecd8;
+    }
+    body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    canvas {
+      /* 整個場地塞進畫面，等比例縮放 */
+      width: min(100vw, calc(100vh * 1000 / 880));
+      height: auto;
+      image-rendering: pixelated;
+      cursor: crosshair;
+    }
+
+    /* 蓋在場地上面的畫面（首頁、等人、訊息） */
+    .screen {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      background: rgba(20, 22, 32, 0.82);
+      text-align: center;
+    }
+    .hidden { display: none; }
+    h1 { font-size: 48px; margin: 0 0 12px; letter-spacing: 4px; }
+    button {
+      font: inherit;
+      font-size: 22px;
+      padding: 10px 28px;
+      border: 4px solid #3a2f22;
+      background: #ffd84a;
+      color: #3a2f22;
+      cursor: pointer;
+    }
+    button:hover { background: #ffe57d; }
+    button.plain { background: transparent; color: #f4ecd8; border-color: #8a8fa3; font-size: 18px; }
+    input {
+      font: inherit;
+      font-size: 26px;
+      width: 5em;
+      padding: 8px;
+      text-align: center;
+      text-transform: uppercase;
+      letter-spacing: 6px;
+      border: 4px solid #3a2f22;
+    }
+    .row { display: flex; gap: 10px; }
+    .or { color: #8a8fa3; }
+    .error { color: #ff5a5a; min-height: 1.4em; margin: 0; font-size: 18px; }
+    .code { font-size: 96px; font-weight: bold; letter-spacing: 16px; color: #ffd84a; }
+    .big { font-size: 36px; margin: 0; }
+  </style>
+</head>
+<body>
+  <canvas id="game" width="1000" height="880"></canvas>
+
+  <!-- 首頁 -->
+  <div id="home" class="screen">
+    <h1>六格小人亂鬥</h1>
+    <button id="btnCreate">開房間</button>
+    <div class="or">或是輸入朋友的房號</div>
+    <div class="row">
+      <input id="codeInput" maxlength="4" placeholder="房號" autocomplete="off">
+      <button id="btnJoin">加入</button>
+    </div>
+    <p id="homeError" class="error"></p>
+  </div>
+
+  <!-- 開房後等對手 -->
+  <div id="waiting" class="screen hidden">
+    <p id="waitingTitle" class="big">把房號給對手</p>
+    <div id="roomCode" class="code">····</div>
+    <p id="waitingHint">等對手加入⋯</p>
+    <button id="btnCancel" class="plain">取消</button>
+  </div>
+
+  <!-- 大字訊息（例如對手斷線） -->
+  <div id="message" class="screen hidden">
+    <p id="messageText" class="big"></p>
+  </div>
+
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <!-- 順序有差：後面的檔會用到前面的東西 -->
+  <script src="config.js"></script>
+  <script src="input.js"></script>
+  <script src="arena.js"></script>
+  <script src="player.js"></script>
+  <script src="net.js"></script>
+  <script src="main.js"></script>
+</body>
+</html>

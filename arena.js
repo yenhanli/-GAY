@@ -1,0 +1,227 @@
+// 六角形場地：牆、草叢、加速板
+
+// ===== 地圖（新手畫這裡）=====
+// 只畫「左半邊」，右半邊程式會自動左右翻過去，所以一定對稱。
+// 每一行 12 個字、共 21 行，每個字是一格 40 px。
+//   .  空地
+//   #  牆
+//   g  草叢
+//   > < ^ v  加速板（箭頭往哪就往哪衝；翻到右邊時 > 和 < 會自動對調）
+// 六角形外面的格子不會出現，所以四個角畫什麼都沒差。
+// 左邊出生點大概在第 11 行（正中間那行）、第 4～5 個字附近，那裡要留空地。
+const MAP_LEFT_HALF = [
+  '............',
+  '........##..',
+  '......#.ggg.',
+  '.....##.ggg.',
+  '....#.......',
+  '...gg...##..',
+  '...gg....#..',
+  '..#...>.....',
+  '..#.....gg.#',
+  '........gg.#',
+  '......#.....',
+  '........gg.#',
+  '..#.....gg.#',
+  '..#...>.....',
+  '...gg....#..',
+  '...gg...##..',
+  '....#.......',
+  '.....##.ggg.',
+  '......#.ggg.',
+  '........##..',
+  '............',
+];
+
+// 加速板箭頭 → 方向
+const BOOST_DIRS = {
+  '>': { x: 1, y: 0 },
+  '<': { x: -1, y: 0 },
+  '^': { x: 0, y: -1 },
+  'v': { x: 0, y: 1 },
+};
+
+const SQRT3 = Math.sqrt(3);
+
+const Arena = {
+  grid: [],    // grid[row][col] = 格子資料，空地或六角形外面是 null
+  tiles: [],   // 所有格子排成一串，畫圖時方便
+  cols: 0,
+  rows: 0,
+
+  // 把文字地圖變成格子
+  build() {
+    const T = CONFIG.arena.tile;
+    this.rows = MAP_LEFT_HALF.length;
+    this.cols = MAP_LEFT_HALF[0].length * 2;
+    this.grid = [];
+    this.tiles = [];
+
+    for (let r = 0; r < this.rows; r++) {
+      const left = MAP_LEFT_HALF[r];
+      const right = left.split('').reverse().map(mirrorChar).join('');
+      const line = left + right;
+      const row = [];
+
+      for (let c = 0; c < this.cols; c++) {
+        const ch = line[c];
+        // 格子中心的座標（場地中心是 0,0）
+        const x = (c + 0.5) * T - (this.cols * T) / 2;
+        const y = (r + 0.5) * T - (this.rows * T) / 2;
+        let tile = null;
+
+        if (ch !== '.' && this.insideHex(x, y, 0)) {
+          if (ch === '#') tile = { type: 'wall', x, y };
+          else if (ch === 'g') tile = { type: 'grass', x, y };
+          else if (BOOST_DIRS[ch]) tile = { type: 'boost', x, y, dir: BOOST_DIRS[ch], cooldown: 0 };
+        }
+        row.push(tile);
+        if (tile) this.tiles.push(tile);
+      }
+      this.grid.push(row);
+    }
+  },
+
+  // 點 (x,y) 有沒有在六角形裡面；margin = 離邊界至少要多遠
+  // 六角形是平頂的：左右兩個尖角，上下是平邊
+  insideHex(x, y, margin) {
+    const R = CONFIG.arena.radius;
+    return Math.abs(y) <= (R * SQRT3) / 2 - margin &&
+           SQRT3 * Math.abs(x) + Math.abs(y) <= SQRT3 * R - 2 * margin;
+  },
+
+  // 這個座標底下是哪一格
+  tileAt(x, y) {
+    const T = CONFIG.arena.tile;
+    const c = Math.floor((x + (this.cols * T) / 2) / T);
+    const r = Math.floor((y + (this.rows * T) / 2) / T);
+    if (r < 0 || r >= this.rows || c < 0 || c >= this.cols) return null;
+    return this.grid[r][c];
+  },
+
+  // 半徑 radius 的圓放在 (x,y) 會不會卡到牆或出界
+  blocked(x, y, radius) {
+    if (!this.insideHex(x, y, radius)) return true;
+    const half = CONFIG.arena.tile / 2;
+    for (const t of this.tiles) {
+      if (t.type !== 'wall') continue;
+      // 圓心到方塊最近的點的距離
+      const dx = Math.max(Math.abs(x - t.x) - half, 0);
+      const dy = Math.max(Math.abs(y - t.y) - half, 0);
+      if (dx * dx + dy * dy < radius * radius) return true;
+    }
+    return false;
+  },
+
+  update(dt) {
+    for (const t of this.tiles) {
+      if (t.type === 'boost' && t.cooldown > 0) t.cooldown -= dt;
+    }
+  },
+
+  // ===== 畫圖 =====
+
+  hexPath(ctx) {
+    const R = CONFIG.arena.radius;
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const a = (Math.PI / 3) * i;
+      ctx.lineTo(Math.cos(a) * R, Math.sin(a) * R);
+    }
+    ctx.closePath();
+  },
+
+  // 地板、加速板、牆（畫在小人下面）
+  drawGround(ctx) {
+    const T = CONFIG.arena.tile;
+
+    ctx.save();
+    this.hexPath(ctx);
+    ctx.fillStyle = '#d9c99a';
+    ctx.fill();
+    ctx.clip();
+
+    // 地板棋盤格，淡淡的
+    ctx.fillStyle = '#d0bf8e';
+    for (let r = 0; r < this.rows; r++) {
+      for (let c = 0; c < this.cols; c++) {
+        if ((r + c) % 2 === 0) continue;
+        ctx.fillRect(c * T - (this.cols * T) / 2, r * T - (this.rows * T) / 2, T, T);
+      }
+    }
+
+    for (const t of this.tiles) {
+      if (t.type === 'boost') drawBoost(ctx, t, T);
+    }
+    for (const t of this.tiles) {
+      if (t.type === 'wall') drawWall(ctx, t, T);
+    }
+    ctx.restore();
+
+    // 六角形邊框
+    this.hexPath(ctx);
+    ctx.lineWidth = 8;
+    ctx.strokeStyle = '#3a2f22';
+    ctx.stroke();
+  },
+
+  // 草叢（畫在對手上面，才藏得住；自己的小人另外處理）
+  drawGrass(ctx) {
+    const T = CONFIG.arena.tile;
+    ctx.save();
+    this.hexPath(ctx);
+    ctx.clip();
+    for (const t of this.tiles) {
+      if (t.type === 'grass') drawGrassTile(ctx, t, T);
+    }
+    ctx.restore();
+  },
+};
+
+function mirrorChar(ch) {
+  if (ch === '>') return '<';
+  if (ch === '<') return '>';
+  return ch;
+}
+
+function drawWall(ctx, t, T) {
+  const x = t.x - T / 2;
+  const y = t.y - T / 2;
+  ctx.fillStyle = '#4b4f5c';
+  ctx.fillRect(x, y, T, T);
+  ctx.fillStyle = '#6b7080';      // 上面亮一點，看起來有高度
+  ctx.fillRect(x, y, T, 8);
+  ctx.fillStyle = '#353843';      // 下面暗一點
+  ctx.fillRect(x, y + T - 4, T, 4);
+}
+
+function drawGrassTile(ctx, t, T) {
+  const x = t.x - T / 2;
+  const y = t.y - T / 2;
+  ctx.fillStyle = '#2f7a35';
+  ctx.fillRect(x, y, T, T);
+  // 葉子：幾個亮綠色小方塊，位置用座標算，每格都一樣固定
+  ctx.fillStyle = '#4fa84f';
+  const leaves = [[4, 6], [20, 2], [30, 14], [10, 22], [24, 28], [2, 32], [32, 34]];
+  for (const [lx, ly] of leaves) {
+    ctx.fillRect(x + lx, y + ly, 4, 8);
+    ctx.fillRect(x + lx + 4, y + ly - 4, 4, 8);
+  }
+}
+
+function drawBoost(ctx, t, T) {
+  const ready = t.cooldown <= 0;
+  ctx.save();
+  ctx.translate(t.x, t.y);
+  ctx.rotate(Math.atan2(t.dir.y, t.dir.x));
+  ctx.globalAlpha = ready ? 1 : 0.35;
+  ctx.fillStyle = '#b8902c';
+  ctx.fillRect(-T / 2 + 2, -T / 2 + 2, T - 4, T - 4);
+  ctx.fillStyle = '#ffd84a';
+  // 像素箭頭（朝右畫，再整個轉向）
+  ctx.fillRect(-14, -4, 16, 8);
+  ctx.fillRect(2, -12, 4, 24);
+  ctx.fillRect(6, -8, 4, 16);
+  ctx.fillRect(10, -4, 4, 8);
+  ctx.restore();
+}
