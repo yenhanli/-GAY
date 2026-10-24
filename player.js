@@ -13,6 +13,8 @@ function createPlayer(id, x, y) {
     boostTime: 0,      // 加速還剩幾秒
     boostDir: { x: 0, y: 0 },
     inGrass: false,
+    shootCooldown: 0,  // 還要等幾秒才能再射
+    revealTime: 0,     // 在草裡開槍後，還會露出來幾秒
   };
 }
 
@@ -75,6 +77,18 @@ const Player = {
 
     const under = Arena.tileAt(p.x, p.y);
     p.inGrass = !!under && under.type === 'grass';
+
+    // 射擊：點一下射一發；還在冷卻就不射（這一下就算了）
+    if (p.shootCooldown > 0) p.shootCooldown -= dt;
+    if (p.revealTime > 0) p.revealTime -= dt;
+    if (input.shootPressed) {
+      input.shootPressed = false;
+      if (p.shootCooldown <= 0) {
+        Bullets.spawn(p);
+        p.shootCooldown = CONFIG.attack.cooldown;
+        p.revealTime = CONFIG.grass.revealAfterShot;
+      }
+    }
   },
 
   // isMe：自己是藍圈，對手是紅圈

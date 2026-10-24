@@ -9,6 +9,7 @@ const Input = {
   mouseY: 0,
   leftButton: false,
   rightButton: false,
+  shootPressed: false,   // 剛剛點了左鍵；射出去後會被改回 false，所以按住不會連射
 
   init(canvas) {
     // 用 e.code 而不是 e.key：開著中文輸入法也認得到 WASD
@@ -21,15 +22,14 @@ const Input = {
       this.leftButton = this.rightButton = false;
     });
 
-    canvas.addEventListener('mousemove', (e) => {
-      // canvas 有被縮放，要換算回 canvas 本來的大小，再把原點移到中心
-      const rect = canvas.getBoundingClientRect();
-      this.mouseX = (e.clientX - rect.left) * (canvas.width / rect.width) - canvas.width / 2;
-      this.mouseY = (e.clientY - rect.top) * (canvas.height / rect.height) - canvas.height / 2;
-    });
+    canvas.addEventListener('mousemove', (e) => this.setMouse(canvas, e));
 
     canvas.addEventListener('mousedown', (e) => {
-      if (e.button === 0) this.leftButton = true;
+      this.setMouse(canvas, e);
+      if (e.button === 0) {
+        this.leftButton = true;
+        this.shootPressed = true;
+      }
       if (e.button === 2) this.rightButton = true;
     });
     window.addEventListener('mouseup', (e) => {
@@ -39,6 +39,13 @@ const Input = {
 
     // 右鍵是大招，不要跳出瀏覽器選單
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+  },
+
+  setMouse(canvas, e) {
+    // canvas 有被縮放，要換算回 canvas 本來的大小，再把原點移到中心
+    const rect = canvas.getBoundingClientRect();
+    this.mouseX = (e.clientX - rect.left) * (canvas.width / rect.width) - canvas.width / 2;
+    this.mouseY = (e.clientY - rect.top) * (canvas.height / rect.height) - canvas.height / 2;
   },
 
   setKey(code, down) {

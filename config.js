@@ -10,6 +10,15 @@ const CONFIG = {
     cellSize: 8,     // 小人每一格畫多大
   },
 
+  // 普攻（基本小人）
+  attack: {
+    damage: 20,          // 打中扣多少血（M4 才會扣）
+    bulletSpeed: 600,    // 子彈每秒飛幾 px
+    range: 400,          // 飛多遠就消失
+    cooldown: 0.5,       // 射完要等幾秒才能再射
+    bulletSize: 8,       // 子彈畫多大（也是碰撞大小）
+  },
+
   // 小人配色（改這裡換顏色）
   colors: {
     hair: '#4a2c1a',
@@ -38,6 +47,7 @@ const CONFIG = {
   grass: {
     selfAlpha: 0.45,       // 自己躲草裡時畫多透明（0 看不到，1 完全不透明）
     revealDistance: 100,   // 對手靠多近就看得到草裡的你
+    revealAfterShot: 1,    // 在草裡開槍後露出來幾秒
   },
 
   // 連線

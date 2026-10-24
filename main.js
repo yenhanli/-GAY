@@ -69,6 +69,12 @@ Net.onError = showHomeError;
 Net.onConnected = () => startMatch(Net.isHost);
 Net.onMessage = (msg) => {
   if (msg.t === 'input' && mode === 'host') Object.assign(Net.remoteInput, msg);
+  if (msg.t === 'shoot' && mode === 'host') {
+    // 用對手點下去那一刻的滑鼠位置瞄準
+    Net.remoteInput.mouseX = msg.mouseX;
+    Net.remoteInput.mouseY = msg.mouseY;
+    Net.remoteInput.shootPressed = true;
+  }
   if (msg.t === 'state' && mode === 'guest') applyState(msg);
 };
 
@@ -85,6 +91,8 @@ function startMatch(asHost) {
   for (const t of Arena.tiles) {
     if (t.type === 'boost') t.cooldown = 0;
   }
+  Bullets.list = [];
+  Input.shootPressed = false;
   sendTimer = 0;
   heartbeatTimer = 0;
   lastInputText = '';
@@ -100,9 +108,10 @@ function opponentLeft() {
   setTimeout(() => showScreen('home'), 2500);
 }
 
-// viewer 看不看得到 target：不在草裡就看得到；在草裡要靠很近才看得到
+// viewer 看不看得到 target：不在草裡就看得到；在草裡剛開過槍、或靠很近才看得到
 function canSee(viewer, target) {
   if (!target.inGrass) return true;
+  if (target.revealTime > 0) return true;
   return Math.hypot(viewer.x - target.x, viewer.y - target.y) <= CONFIG.grass.revealDistance;
 }
 
@@ -112,6 +121,7 @@ function updateHost(dt) {
   Arena.update(dt);
   Player.update(players.host, Input, dt);
   Player.update(players.guest, Net.remoteInput, dt);
+  Bullets.update(dt, [players.host, players.guest], null);
 
   sendTimer -= dt;
   if (sendTimer <= 0) {
@@ -128,6 +138,15 @@ function makeState() {
     host: packPlayer(players.host, guestSeesHost),
     guest: packPlayer(players.guest, true),
     boosts: Arena.tiles.filter((t) => t.type === 'boost').map((t) => Math.max(0, Math.round(t.cooldown * 10) / 10)),
+    // 子彈連速度一起送，對手那台在兩次狀態之間可以自己往前飛，看起來才順
+    bullets: Bullets.list.map((b) => ({
+      owner: b.owner,
+      x: Math.round(b.x),
+      y: Math.round(b.y),
+      vx: Math.round(b.vx),
+      vy: Math.round(b.vy),
+      traveled: Math.round(b.traveled),
+    })),
   };
 }
 
@@ -161,6 +180,7 @@ function applyState(msg) {
   }
   const boosts = Arena.tiles.filter((t) => t.type === 'boost');
   boosts.forEach((t, i) => (t.cooldown = msg.boosts[i]));
+  Bullets.list = msg.bullets;
 }
 
 function updateGuest(dt) {
@@ -174,6 +194,15 @@ function updateGuest(dt) {
   // 自己的面向直接用自己的滑鼠算，不用等房主，瞄起來才跟手
   const me = players[myId];
   me.angle = Math.atan2(Input.mouseY - me.y, Input.mouseX - me.x);
+
+  // 子彈先自己往前飛，等房主下次送狀態再校正（打中誰還是房主說了算）
+  Bullets.update(dt, [], null);
+
+  // 點了左鍵就馬上告訴房主
+  if (Input.shootPressed) {
+    Input.shootPressed = false;
+    Net.send({ t: 'shoot', mouseX: Math.round(Input.mouseX), mouseY: Math.round(Input.mouseY) });
+  }
 
   // 按鍵有變才送；沒變也每 0.5 秒送一次，讓房主知道我還在
   const msg = {
@@ -223,6 +252,7 @@ function draw() {
     const otherVisible = mode === 'host' ? canSee(me, other) : !other.hidden;
     if (otherVisible) Player.draw(ctx, other, false);
     Player.draw(ctx, me, true);
+    Bullets.draw(ctx, myId);
   }
   ctx.restore();
 }
