@@ -28,6 +28,11 @@ const Net = {
 
     this.peer.on('open', () => onCode(code));
 
+    // 等人的時候跟 PeerJS 伺服器斷了（例如網路閃一下），不重連的話就沒人加得進來
+    this.peer.on('disconnected', () => {
+      if (this.peer && !this.peer.destroyed && !this.connected) this.peer.reconnect();
+    });
+
     this.peer.on('connection', (conn) => {
       // 已經有對手了，第二個人來就告訴他房間滿了
       if (this.conn) {

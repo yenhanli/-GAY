@@ -36,7 +36,12 @@ const Bullets = {
         else {
           for (const p of targets) {
             if (p.id === b.owner) continue;
-            if (Math.hypot(p.x - b.x, p.y - b.y) < p.r + size / 2) {
+            // 子彈這個小方塊有沒有碰到小人畫出來的身體
+            const body = Player.bodyRect(p);
+            const half = size / 2;
+            const hit = b.x + half > body.left && b.x - half < body.left + body.width &&
+                        b.y + half > body.top && b.y - half < body.top + body.height;
+            if (hit) {
               b.dead = true;
               if (onHit) onHit(b, p);
               break;

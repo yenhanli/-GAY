@@ -278,8 +278,16 @@ function loop(now) {
 requestAnimationFrame(loop);
 
 // 視窗縮小或切到別的分頁時，瀏覽器會暫停 requestAnimationFrame。
-// 超過 0.2 秒沒跑就改用計時器繼續跑（背景時瀏覽器大約一秒跑一次），
-// 房主才會繼續送狀態，連線也不會被當成斷線。
-setInterval(() => {
+// 超過 0.2 秒沒跑就改用計時器繼續跑，房主才會繼續送狀態，連線也不會被當成斷線。
+// 計時器放在 Web Worker 裡：一般的 setInterval 在背景會被瀏覽器降到一秒一次，
+// 放久了甚至一分鐘一次；Worker 裡的比較不會被降速。
+function backupTick() {
   if (performance.now() - last > 200) tick(performance.now());
-}, 50);
+}
+try {
+  const code = 'setInterval(() => postMessage(0), 50);';
+  const worker = new Worker(URL.createObjectURL(new Blob([code], { type: 'text/javascript' })));
+  worker.onmessage = backupTick;
+} catch (e) {
+  setInterval(backupTick, 50);   // 不能用 Worker 的瀏覽器就用一般的
+}

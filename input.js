@@ -20,6 +20,7 @@ const Input = {
     window.addEventListener('blur', () => {
       this.up = this.down = this.left = this.right = false;
       this.leftButton = this.rightButton = false;
+      this.shootPressed = false;
     });
 
     canvas.addEventListener('mousemove', (e) => this.setMouse(canvas, e));

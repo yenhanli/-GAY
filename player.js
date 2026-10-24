@@ -91,6 +91,13 @@ const Player = {
     }
   },
 
+  // 小人身體畫在哪個方塊裡（寬 2 格、高 4 格，腳踩在圈上）
+  // 畫圖和子彈打中判定都用這個，所以「看起來打到」就是「真的打到」
+  bodyRect(p) {
+    const S = CONFIG.player.cellSize;
+    return { left: p.x - S, top: p.y + 14 - S * 4, width: S * 2, height: S * 4 };
+  },
+
   // isMe：自己是藍圈，對手是紅圈
   draw(ctx, p, isMe) {
     const S = CONFIG.player.cellSize;
@@ -107,9 +114,10 @@ const Player = {
     ctx.strokeStyle = isMe ? '#2f7bff' : '#ff3b3b';
     ctx.stroke();
 
-    // 6 格身體：寬 2 格、高 4 格，腳踩在圈上
-    const left = Math.round(p.x - S);
-    const top = Math.round(p.y + 14 - S * 4);
+    // 6 格身體
+    const body = this.bodyRect(p);
+    const left = Math.round(body.left);
+    const top = Math.round(body.top);
     for (const cell of PLAYER_CELLS) {
       let col = cell.col;
       if (facingLeft && cell.side) col = 1 - col;   // 面向左邊時鈕扣換到左邊
