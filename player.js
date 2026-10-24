@@ -15,6 +15,9 @@ function createPlayer(id, x, y) {
     inGrass: false,
     shootCooldown: 0,  // 還要等幾秒才能再射
     revealTime: 0,     // 在草裡開槍後，還會露出來幾秒
+    sinceHit: 99,      // 距離上次被打中幾秒（回血用）
+    flash: 0,          // 閃白還剩幾秒
+    dead: false,       // 倒下了沒
   };
 }
 
@@ -32,6 +35,20 @@ const PLAYER_CELLS = [
 
 const Player = {
   update(p, input, dt) {
+    if (p.flash > 0) p.flash -= dt;
+
+    // 倒下了就不能動、不能射
+    if (p.dead) {
+      input.shootPressed = false;
+      return;
+    }
+
+    // 回血：太久沒被打到就慢慢補
+    p.sinceHit += dt;
+    if (p.sinceHit >= CONFIG.player.regenDelay) {
+      p.hp = Math.min(CONFIG.player.hp, p.hp + CONFIG.player.regenPerSec * dt);
+    }
+
     // 方向鍵 → 方向
     let dx = (input.right ? 1 : 0) - (input.left ? 1 : 0);
     let dy = (input.down ? 1 : 0) - (input.up ? 1 : 0);
@@ -91,6 +108,14 @@ const Player = {
     }
   },
 
+  // 被打中：扣血、閃白，血歸零就倒下（只有房主會呼叫）
+  takeDamage(p, amount) {
+    p.hp = Math.max(0, p.hp - amount);
+    p.sinceHit = 0;
+    p.flash = CONFIG.player.flashTime;
+    if (p.hp <= 0) p.dead = true;
+  },
+
   // 小人身體畫在哪個方塊裡（寬 2 格、高 4 格，腳踩在圈上）
   // 畫圖和子彈打中判定都用這個，所以「看起來打到」就是「真的打到」
   bodyRect(p) {
@@ -114,6 +139,14 @@ const Player = {
     ctx.strokeStyle = isMe ? '#2f7bff' : '#ff3b3b';
     ctx.stroke();
 
+    // 倒下：整個人轉 90 度躺平、變淡
+    if (p.dead) {
+      ctx.globalAlpha *= 0.6;
+      ctx.translate(p.x, p.y);
+      ctx.rotate(Math.PI / 2);
+      ctx.translate(-p.x, -p.y);
+    }
+
     // 6 格身體
     const body = this.bodyRect(p);
     const left = Math.round(body.left);
@@ -123,10 +156,10 @@ const Player = {
       if (facingLeft && cell.side) col = 1 - col;   // 面向左邊時鈕扣換到左邊
       const cx = left + col * S;
       const cy = top + cell.row * S;
-      ctx.fillStyle = C[cell.color];
+      ctx.fillStyle = p.flash > 0 ? '#ffffff' : C[cell.color];   // 被打中閃白
       ctx.fillRect(cx, cy, S, S);
 
-      if (cell.eyes) {
+      if (cell.eyes && p.flash <= 0) {
         // 眼睛往瞄準的方向看
         const ex = Math.round(Math.cos(p.angle) * 1.5);
         const ey = Math.round(Math.sin(p.angle) * 1.5);
@@ -134,6 +167,11 @@ const Player = {
         ctx.fillRect(cx + 2 + ex, cy + 3 + ey, 2, 2);
         ctx.fillRect(cx + 5 + ex, cy + 3 + ey, 2, 2);
       }
+    }
+
+    if (p.dead) {
+      ctx.restore();
+      return;
     }
 
     // 手（一個小方塊，繞著小人指向滑鼠）

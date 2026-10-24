@@ -76,6 +76,7 @@ Net.onMessage = (msg) => {
     Net.remoteInput.shootPressed = true;
   }
   if (msg.t === 'state' && mode === 'guest') applyState(msg);
+  if (msg.t === 'hit' && mode === 'guest') showHit(msg.id, msg.dmg);
 };
 
 // ===== 開打 =====
@@ -92,6 +93,7 @@ function startMatch(asHost) {
     if (t.type === 'boost') t.cooldown = 0;
   }
   Bullets.list = [];
+  Hud.popups = [];
   Input.shootPressed = false;
   sendTimer = 0;
   heartbeatTimer = 0;
@@ -115,13 +117,44 @@ function canSee(viewer, target) {
   return Math.hypot(viewer.x - target.x, viewer.y - target.y) <= CONFIG.grass.revealDistance;
 }
 
+// 打中的效果：閃白＋頭上飄「-20」。房主打中時自己呼叫，也傳給對手那台呼叫
+function showHit(id, dmg) {
+  const p = players[id];
+  p.flash = CONFIG.player.flashTime;
+  Hud.addPopup(p.x, Player.bodyRect(p).top - 16, '-' + dmg);
+}
+
 // ===== 房主 =====
+
+// 子彈打中人（只有房主會算）
+function onBulletHit(bullet, p) {
+  const dmg = CONFIG.attack.damage;
+  Player.takeDamage(p, dmg);
+  showHit(p.id, dmg);
+  Net.send({ t: 'hit', id: p.id, dmg });
+}
+
+// 暫時的：倒下 3 秒後回出生點、血補滿。M5 做回合以後改成「這回合結束」
+const TEMP_RESPAWN_TIME = 3;
+function tempRespawn(dt) {
+  for (const p of Object.values(players)) {
+    if (!p.dead) continue;
+    p.deadTime = (p.deadTime || 0) + dt;
+    if (p.deadTime >= TEMP_RESPAWN_TIME) {
+      const D = CONFIG.arena.spawnDistance;
+      Object.assign(p, createPlayer(p.id, p.id === 'host' ? -D : D, 0));
+    }
+  }
+}
 
 function updateHost(dt) {
   Arena.update(dt);
   Player.update(players.host, Input, dt);
   Player.update(players.guest, Net.remoteInput, dt);
-  Bullets.update(dt, [players.host, players.guest], null);
+  // 倒下的人不會再被打中
+  const alive = Object.values(players).filter((p) => !p.dead);
+  Bullets.update(dt, alive, onBulletHit);
+  tempRespawn(dt);
 
   sendTimer -= dt;
   if (sendTimer <= 0) {
@@ -157,6 +190,8 @@ function packPlayer(p, visible) {
     y: Math.round(p.y * 10) / 10,
     angle: Math.round(p.angle * 100) / 100,
     inGrass: p.inGrass,
+    hp: Math.round(p.hp),
+    dead: p.dead,
   };
 }
 
@@ -176,6 +211,8 @@ function applyState(msg) {
     p.targetX = s.x;
     p.targetY = s.y;
     p.inGrass = s.inGrass;
+    p.hp = s.hp;
+    p.dead = s.dead;
     if (id !== myId) p.angle = s.angle;
   }
   const boosts = Arena.tiles.filter((t) => t.type === 'boost');
@@ -186,6 +223,7 @@ function applyState(msg) {
 function updateGuest(dt) {
   const k = Math.min(1, dt * CONFIG.net.smoothing);
   for (const p of Object.values(players)) {
+    if (p.flash > 0) p.flash -= dt;
     if (p.targetX === undefined) continue;
     p.x += (p.targetX - p.x) * k;
     p.y += (p.targetY - p.y) * k;
@@ -233,6 +271,7 @@ function update(dt) {
   }
   if (mode === 'host') updateHost(dt);
   if (mode === 'guest') updateGuest(dt);
+  Hud.update(dt);
 }
 
 function draw() {
@@ -253,6 +292,9 @@ function draw() {
     if (otherVisible) Player.draw(ctx, other, false);
     Player.draw(ctx, me, true);
     Bullets.draw(ctx, myId);
+    if (otherVisible) Hud.drawHealthBar(ctx, other, false);
+    Hud.drawHealthBar(ctx, me, true);
+    Hud.drawPopups(ctx);
   }
   ctx.restore();
 }

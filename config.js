@@ -8,11 +8,14 @@ const CONFIG = {
     speed: 200,      // 每秒走幾 px
     radius: 14,      // 碰撞半徑（撞牆用的圓有多大）
     cellSize: 8,     // 小人每一格畫多大
+    regenDelay: 3,   // 幾秒沒被打到開始回血
+    regenPerSec: 10, // 回血時每秒補多少
+    flashTime: 0.12, // 被打中閃白幾秒
   },
 
   // 普攻（基本小人）
   attack: {
-    damage: 20,          // 打中扣多少血（M4 才會扣）
+    damage: 20,          // 打中扣多少血
     bulletSpeed: 600,    // 子彈每秒飛幾 px
     range: 400,          // 飛多遠就消失
     cooldown: 0.5,       // 射完要等幾秒才能再射
