@@ -75,7 +75,10 @@
   <!-- 首頁 -->
   <div id="home" class="screen">
     <h1>六格小人亂鬥</h1>
-    <button id="btnCreate">開房間</button>
+    <div class="row">
+      <button id="btnCreate1v1">開房間（1v1）</button>
+      <button id="btnCreateFFA">開房間（3 人亂鬥）</button>
+    </div>
     <div class="or">或是輸入朋友的房號</div>
     <div class="row">
       <input id="codeInput" maxlength="4" placeholder="房號" autocomplete="off">
@@ -106,16 +109,16 @@
   </div>
 
   <!-- 順序有差：後面的檔會用到前面的東西 -->
-  <!-- ?v=8 是版本號：每次更新程式就把所有的 v= 改成下一個數字，
+  <!-- ?v=9 是版本號：每次更新程式就把所有的 v= 改成下一個數字，
        瀏覽器才會重新下載，不會拿到新舊混在一起的檔案 -->
-  <script src="config.js?v=8"></script>
-  <script src="input.js?v=8"></script>
-  <script src="arena.js?v=8"></script>
-  <script src="player.js?v=8"></script>
-  <script src="bullet.js?v=8"></script>
-  <script src="hud.js?v=8"></script>
-  <script src="round.js?v=8"></script>
-  <script src="net.js?v=8"></script>
-  <script src="main.js?v=8"></script>
+  <script src="config.js?v=9"></script>
+  <script src="input.js?v=9"></script>
+  <script src="arena.js?v=9"></script>
+  <script src="player.js?v=9"></script>
+  <script src="bullet.js?v=9"></script>
+  <script src="hud.js?v=9"></script>
+  <script src="round.js?v=9"></script>
+  <script src="net.js?v=9"></script>
+  <script src="main.js?v=9"></script>
 </body>
 </html>

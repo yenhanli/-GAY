@@ -67,14 +67,14 @@ const Bullets = {
     this.list = this.list.filter((b) => !b.dead);
   },
 
-  // myId：自己的子彈畫藍色、對手的畫紅色；大招的子彈是金色
-  draw(ctx, myId) {
+  // 子彈用開槍那個人的顏色（自己藍色）；大招的子彈是金色，外框用他的顏色
+  draw(ctx) {
     const s = CONFIG.attack.bulletSize;
     for (const b of this.list) {
-      ctx.fillStyle = '#3a2f22';
+      const color = Hud.colorOf(b.owner);
+      ctx.fillStyle = b.isSuper ? color.ring : '#3a2f22';
       ctx.fillRect(Math.round(b.x - s / 2) - 2, Math.round(b.y - s / 2) - 2, s + 4, s + 4);
-      if (b.isSuper) ctx.fillStyle = b.owner === myId ? '#ffe066' : '#ffb03a';
-      else ctx.fillStyle = b.owner === myId ? '#8fd3ff' : '#ff7a5a';
+      ctx.fillStyle = b.isSuper ? '#ffe066' : color.bullet;
       ctx.fillRect(Math.round(b.x - s / 2), Math.round(b.y - s / 2), s, s);
     }
   },

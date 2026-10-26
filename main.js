@@ -1,22 +1,33 @@
 // 遊戲迴圈：每一幀先更新、再畫
 //
-// 兩台電腦的分工：
-//   房主（host）：跑完整的遊戲，兩個小人怎麼動都由房主算，每秒送 20 次狀態給對手
-//   對手（guest）：只送按鍵和滑鼠過去，收到狀態就照著畫
+// 電腦之間的分工：
+//   房主（p0）：跑完整的遊戲，所有小人怎麼動都由房主算，每秒送 20 次狀態給每個對手
+//   對手（p1、p2）：只送按鍵和滑鼠過去，收到狀態就照著畫
+// 模式：'1v1' 兩個人、'ffa' 三個人亂鬥
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 ctx.imageSmoothingEnabled = false;
 
 Input.init(canvas);
-Arena.build();
+Arena.build('1v1');   // 首頁背景先放 1v1 的地圖
 
 let mode = 'home';       // 'home' 還沒開打、'host' 我是房主、'guest' 我是加入的人
-let players = {};        // { host: 小人, guest: 小人 }
-let myId = 'host';
+let gameMode = '1v1';    // '1v1' 或 'ffa'
+let ids = [];            // 這局有哪些人，例如 ['p0', 'p1', 'p2']
+let players = {};        // id → 小人
+let myId = 'p0';
+let leftIds = new Set(); // 房主：中途斷線的人
 let sendTimer = 0;       // 房主：距離下次送狀態還有幾秒
 let heartbeatTimer = 0;  // 對手：距離下次一定要送按鍵還有幾秒
 let lastInputText = '';  // 對手：上次送出的按鍵，沒變就不送
+
+const MAX_PLAYERS = { '1v1': 2, ffa: 3 };
+
+// 還在場上（沒斷線）的人
+function activeIds() {
+  return ids.filter((id) => !players[id] || !players[id].left);
+}
 
 // ===== 畫面切換 =====
 
@@ -29,46 +40,74 @@ function showScreen(id) {
   }
 }
 
+function showHomeError(text) {
+  document.getElementById('homeError').textContent = text;
+  showScreen('home');
+}
+
+function setWaiting(code, hint) {
+  if (code !== null) document.getElementById('roomCode').textContent = code;
+  document.getElementById('waitingHint').textContent = hint;
+}
+
+// 大字訊息，過一下回首頁
+function endWithMessage(text) {
+  Net.leave();
+  mode = 'home';
+  document.getElementById('messageText').textContent = text;
+  showScreen('message');
+  setTimeout(() => {
+    if (mode === 'home') showScreen('home');
+  }, 2500);
+}
+
 // 整局結束就跳結算畫面，重開了就關掉
 function syncResultScreen() {
   const want = Round.phase === 'matchEnd' ? 'result' : null;
   if (currentScreen !== want) showScreen(want);
   if (want !== 'result') return;
 
-  const otherId = myId === 'host' ? 'guest' : 'host';
   const won = Round.matchWinner === myId;
   document.getElementById('resultTitle').textContent = won ? '你贏了！' : '你輸了⋯';
-  document.getElementById('resultScore').textContent = Round.scores[myId] + ' ： ' + Round.scores[otherId];
+  const order = Hud.order();   // 自己排第一個
+  document.getElementById('resultScore').textContent = gameMode === '1v1'
+    ? order.map((id) => Round.scores[id]).join(' ： ')
+    : order.map((id) => Hud.colorOf(id).name + ' ' + Round.scores[id]).join('　');
+
   const pressed = Round.rematch[myId];
+  const othersPressed = activeIds().filter((id) => id !== myId && Round.rematch[id]).length;
   document.getElementById('btnRematch').disabled = pressed;
-  document.getElementById('rematchHint').textContent = pressed
-    ? '等對手按「再來一局」⋯'
-    : Round.rematch[otherId] ? '對手想再來一局！' : '';
+  let hint = '';
+  if (pressed) hint = gameMode === '1v1' ? '等對手按「再來一局」⋯' : '等其他人按「再來一局」⋯';
+  else if (othersPressed) hint = gameMode === '1v1' ? '對手想再來一局！' : '有 ' + othersPressed + ' 個人想再來一局！';
+  document.getElementById('rematchHint').textContent = hint;
 }
 
 document.getElementById('btnRematch').onclick = () => {
-  if (mode === 'host') Round.pressRematch('host');
+  if (mode === 'host') Round.pressRematch(myId);
   if (mode === 'guest') {
-    Round.rematch.guest = true;   // 先在自己這邊顯示「等對手」，房主下次送狀態就會確認
+    Round.rematch[myId] = true;   // 先在自己這邊顯示「等其他人」，房主下次送狀態就會確認
     Net.send({ t: 'rematch' });
   }
 };
 
-function showHomeError(text) {
-  document.getElementById('homeError').textContent = text;
-  showScreen('home');
-}
+// ===== 首頁 =====
 
-document.getElementById('btnCreate').onclick = () => {
+function createClicked(chosenMode) {
+  gameMode = chosenMode;
+  const max = MAX_PLAYERS[gameMode];
   document.getElementById('homeError').textContent = '';
-  document.getElementById('roomCode').textContent = '····';
-  document.getElementById('waitingHint').textContent = '正在開房間⋯';
+  setWaiting('····', '正在開房間⋯');
   showScreen('waiting');
-  Net.createRoom((code) => {
-    document.getElementById('roomCode').textContent = code;
-    document.getElementById('waitingHint').textContent = '等對手加入⋯';
-  });
-};
+  Net.createRoom(max, (code) => setWaiting(code, lobbyText(1, max)));
+}
+document.getElementById('btnCreate1v1').onclick = () => createClicked('1v1');
+document.getElementById('btnCreateFFA').onclick = () => createClicked('ffa');
+
+function lobbyText(count, max) {
+  if (max === 2) return '等對手加入⋯';
+  return '等其他人加入⋯（' + count + '/' + max + '）';
+}
 
 function joinClicked() {
   const code = document.getElementById('codeInput').value.trim().toUpperCase();
@@ -77,8 +116,7 @@ function joinClicked() {
     return;
   }
   document.getElementById('homeError').textContent = '';
-  document.getElementById('roomCode').textContent = code;
-  document.getElementById('waitingHint').textContent = '連線中⋯';
+  setWaiting(code, '連線中⋯');
   showScreen('waiting');
   Net.joinRoom(code);
 }
@@ -89,66 +127,143 @@ document.getElementById('codeInput').onkeydown = (e) => {
 
 document.getElementById('btnCancel').onclick = () => {
   Net.leave();
+  mode = 'home';
   showScreen('home');
 };
 
+// ===== 連線事件 =====
+
 Net.onError = showHomeError;
-Net.onConnected = () => startMatch(Net.isHost);
-Net.onMessage = (msg) => {
-  if (msg.t === 'input' && mode === 'host') Object.assign(Net.remoteInput, msg);
-  if (msg.t === 'shoot' && mode === 'host') {
-    // 用對手點下去那一刻的滑鼠位置瞄準
-    Net.remoteInput.mouseX = msg.mouseX;
-    Net.remoteInput.mouseY = msg.mouseY;
-    Net.remoteInput.shootPressed = true;
+
+// 房主：有人進房；人到齊就開打
+Net.onGuestJoined = () => {
+  const max = MAX_PLAYERS[gameMode];
+  const count = 1 + Object.keys(Net.guests).length;
+  setWaiting(null, lobbyText(count, max));
+  Net.broadcast({ t: 'lobby', count, max });
+  if (count === max) {
+    Net.lock();
+    const list = [];
+    for (let i = 0; i < max; i++) list.push('p' + i);
+    Net.broadcast({ t: 'start', mode: gameMode, ids: list });
+    startMatch('host', gameMode, list, 'p0');
   }
-  if (msg.t === 'super' && mode === 'host') {
-    Net.remoteInput.mouseX = msg.mouseX;
-    Net.remoteInput.mouseY = msg.mouseY;
-    Net.remoteInput.superPressed = true;
-  }
-  if (msg.t === 'state' && mode === 'guest') applyState(msg);
-  if (msg.t === 'hit' && mode === 'guest') showHit(msg.id, msg.dmg);
-  if (msg.t === 'rematch' && mode === 'host') Round.pressRematch('guest');
 };
+
+// 房主：有人離開（開打前就更新人數；開打後就是斷線）
+Net.onGuestLeft = (slot) => {
+  if (mode === 'home') {
+    const max = MAX_PLAYERS[gameMode];
+    const count = 1 + Object.keys(Net.guests).length;
+    setWaiting(null, lobbyText(count, max));
+    Net.broadcast({ t: 'lobby', count, max });
+    return;
+  }
+  playerLeft('p' + slot);
+};
+
+// 對手：進房成功
+Net.onWelcome = () => setWaiting(null, '已加入！等房主開始⋯');
+
+// 對手：房主走了
+Net.onHostLeft = () => {
+  if (mode === 'home') {
+    showHomeError('房主離開了');
+    return;
+  }
+  endWithMessage(gameMode === '1v1' ? '對手斷線了，你贏了！' : '房主斷線了，這局結束');
+};
+
+Net.onMessage = (msg, slot) => {
+  if (Net.isHost) {
+    hostReceive(msg, 'p' + slot, Net.guests[slot]);
+    return;
+  }
+  // 對手收到房主的訊息
+  if (msg.t === 'lobby') setWaiting(null, msg.max === 2 ? '已加入！' : '已加入！等其他人⋯（' + msg.count + '/' + msg.max + '）');
+  if (msg.t === 'start') startMatch('guest', msg.mode, msg.ids, 'p' + Net.slot);
+  if (mode !== 'guest') return;
+  if (msg.t === 'state') applyState(msg);
+  if (msg.t === 'hit') showHit(msg.id, msg.dmg);
+};
+
+// 房主收到某個對手的訊息
+function hostReceive(msg, id, guest) {
+  if (mode !== 'host' || !guest) return;
+  const input = guest.input;
+  if (msg.t === 'input') Object.assign(input, msg);
+  if (msg.t === 'shoot' || msg.t === 'super') {
+    // 用對手點下去那一刻的滑鼠位置瞄準
+    input.mouseX = msg.mouseX;
+    input.mouseY = msg.mouseY;
+    if (msg.t === 'shoot') input.shootPressed = true;
+    else input.superPressed = true;
+  }
+  if (msg.t === 'rematch') Round.pressRematch(id);
+}
+
+// 房主：某個人的按鍵從哪裡來
+function inputOf(id) {
+  if (id === 'p0') return Input;
+  const g = Net.guests[Number(id.slice(1))];
+  return g ? g.input : emptyInput();
+}
 
 // ===== 開打 =====
 
-function startMatch(asHost) {
-  mode = asHost ? 'host' : 'guest';
-  myId = asHost ? 'host' : 'guest';
+function startMatch(asMode, chosenMode, idList, me) {
+  mode = asMode;
+  gameMode = chosenMode;
+  ids = idList;
+  myId = me;
+  leftIds = new Set();
   sendTimer = 0;
   heartbeatTimer = 0;
   lastInputText = '';
+  // 剛開打，等人的時間不算在斷線計時裡
+  Net.lastHeardHost = performance.now();
+  for (const g of Object.values(Net.guests)) g.lastHeard = performance.now();
+
+  Arena.build(gameMode);
+  Hud.setupColors(ids, myId);
   Round.resetMatch();   // 比數歸零、開第一回合（會呼叫下面的 resetField）
   showScreen(null);
 }
 
-// 每回合開始：兩個人回出生點、血補滿，清掉場上的子彈
+// 每回合開始：大家回出生點、血補滿，清掉場上的子彈
 function resetField() {
-  const D = CONFIG.arena.spawnDistance;
-  players = {
-    host: createPlayer('host', -D, 0),     // 房主在左邊
-    guest: createPlayer('guest', D, 0),    // 對手在右邊
-  };
+  players = {};
+  ids.forEach((id, i) => {
+    const s = Arena.spawns[i];
+    players[id] = createPlayer(id, s.x, s.y);
+    if (leftIds.has(id)) {
+      players[id].left = true;
+      players[id].dead = true;
+    }
+  });
   for (const t of Arena.tiles) {
     if (t.type === 'boost') t.cooldown = 0;
   }
   Bullets.list = [];
   Hud.popups = [];
-  Input.shootPressed = false;
-  Input.superPressed = false;
-  Net.remoteInput.shootPressed = false;
-  Net.remoteInput.superPressed = false;
+  for (const id of ids) {
+    const input = mode === 'host' ? inputOf(id) : id === myId ? Input : null;
+    if (!input) continue;
+    input.shootPressed = false;
+    input.superPressed = false;
+  }
 }
 
-// 對手斷線：剩下的人獲勝，回首頁
-function opponentLeft() {
-  Net.leave();
-  mode = 'home';
-  document.getElementById('messageText').textContent = '對手斷線了，你贏了！';
-  showScreen('message');
-  setTimeout(() => showScreen('home'), 2500);
+// 房主：有人中途斷線。只剩自己一個就直接贏
+function playerLeft(id) {
+  if (!players[id]) return;
+  leftIds.add(id);
+  players[id].left = true;
+  players[id].dead = true;
+  delete Round.rematch[id];
+  if (activeIds().length <= 1) {
+    endWithMessage(gameMode === '1v1' ? '對手斷線了，你贏了！' : '其他人都斷線了，你贏了！');
+  }
 }
 
 // viewer 看不看得到 target：不在草裡就看得到；在草裡剛開過槍、或靠很近才看得到
@@ -161,6 +276,7 @@ function canSee(viewer, target) {
 // 打中的效果：閃白＋頭上飄「-20」。房主打中時自己呼叫，也傳給對手那台呼叫
 function showHit(id, dmg) {
   const p = players[id];
+  if (!p) return;
   p.flash = CONFIG.player.flashTime;
   Hud.addPopup(p.x, Player.bodyRect(p).top - 16, '-' + dmg);
 }
@@ -173,9 +289,14 @@ function onBulletHit(bullet, p) {
   Player.takeDamage(p, dmg);
   // 普攻打中才集大招氣
   const shooter = players[bullet.owner];
-  if (!bullet.isSuper) shooter.super = Math.min(CONFIG.super.hitsToCharge, shooter.super + 1);
+  if (!bullet.isSuper && shooter) shooter.super = Math.min(CONFIG.super.hitsToCharge, shooter.super + 1);
   showHit(p.id, dmg);
-  Net.send({ t: 'hit', id: p.id, dmg });
+  // 告訴對手們：被打的、開槍的、或看得到被打的人，才會收到
+  for (const slot of Object.keys(Net.guests)) {
+    const viewer = players['p' + slot];
+    if (!viewer) continue;
+    if (viewer === p || viewer === shooter || canSee(viewer, p)) Net.sendTo(Number(slot), { t: 'hit', id: p.id, dmg });
+  }
 }
 
 // 還沒開打（倒數、回合結束、整局結束）：不能動、不能射，只能轉頭瞄準
@@ -187,16 +308,17 @@ function aimOnly(p, input, dt) {
 }
 
 function updateHost(dt) {
+  Net.checkTimeouts();
+  if (mode !== 'host') return;   // 可能剛剛因為大家都斷線而結束
+
   Arena.update(dt);
+  const active = activeIds().map((id) => players[id]);
   if (Round.phase === 'fight') {
-    Player.update(players.host, Input, dt);
-    Player.update(players.guest, Net.remoteInput, dt);
+    for (const p of active) Player.update(p, inputOf(p.id), dt);
     // 倒下的人不會再被打中
-    const alive = Object.values(players).filter((p) => !p.dead);
-    Bullets.update(dt, alive, onBulletHit);
+    Bullets.update(dt, active.filter((p) => !p.dead), onBulletHit);
   } else {
-    aimOnly(players.host, Input, dt);
-    aimOnly(players.guest, Net.remoteInput, dt);
+    for (const p of active) aimOnly(p, inputOf(p.id), dt);
     Bullets.update(dt, [], null);   // 還在飛的子彈飛完
   }
   Round.update(dt);
@@ -204,18 +326,24 @@ function updateHost(dt) {
   sendTimer -= dt;
   if (sendTimer <= 0) {
     sendTimer = 1 / CONFIG.net.stateRate;
-    Net.send(makeState());
+    for (const slot of Object.keys(Net.guests)) {
+      Net.sendTo(Number(slot), makeState('p' + slot));
+    }
   }
 }
 
-// 打包要送給對手的狀態。對手看不到的人就不送位置，想作弊也看不到。
-function makeState() {
-  const guestSeesHost = canSee(players.guest, players.host);
+// 打包要送給某個對手的狀態。他看不到的人就不送位置，想作弊也看不到。
+function makeState(viewerId) {
+  const viewer = players[viewerId];
+  const packed = {};
+  for (const id of ids) {
+    const p = players[id];
+    packed[id] = packPlayer(p, id === viewerId || canSee(viewer, p));
+  }
   return {
     t: 'state',
     round: Round.pack(),
-    host: packPlayer(players.host, guestSeesHost),
-    guest: packPlayer(players.guest, true),
+    players: packed,
     boosts: Arena.tiles.filter((t) => t.type === 'boost').map((t) => Math.max(0, Math.round(t.cooldown * 10) / 10)),
     // 子彈連速度一起送，對手那台在兩次狀態之間可以自己往前飛，看起來才順
     bullets: Bullets.list.map((b) => ({
@@ -231,6 +359,7 @@ function makeState() {
 }
 
 function packPlayer(p, visible) {
+  if (p.left) return { left: true, hidden: true };
   if (!visible) return { hidden: true };
   return {
     x: Math.round(p.x * 10) / 10,
@@ -247,9 +376,11 @@ function packPlayer(p, visible) {
 
 function applyState(msg) {
   Object.assign(Round, msg.round);
-  for (const id of ['host', 'guest']) {
+  for (const id of ids) {
     const p = players[id];
-    const s = msg[id];
+    const s = msg.players[id];
+    if (!p || !s) continue;
+    p.left = !!s.left;
     p.hidden = !!s.hidden;
     if (p.hidden) continue;
     // 先記下目標位置，每幀慢慢滑過去，看起來才不會一格一格跳
@@ -271,6 +402,11 @@ function applyState(msg) {
 }
 
 function updateGuest(dt) {
+  if (Net.hostTimedOut()) {
+    Net.hostGone();
+    return;
+  }
+
   const k = Math.min(1, dt * CONFIG.net.smoothing);
   for (const p of Object.values(players)) {
     if (p.flash > 0) p.flash -= dt;
@@ -286,7 +422,7 @@ function updateGuest(dt) {
   // 子彈先自己往前飛，等房主下次送狀態再校正（打中誰還是房主說了算）
   Bullets.update(dt, [], null);
 
-  // 點了左鍵就馬上告訴房主
+  // 點了左鍵／右鍵就馬上告訴房主
   if (Input.shootPressed) {
     Input.shootPressed = false;
     Net.send({ t: 'shoot', mouseX: Math.round(Input.mouseX), mouseY: Math.round(Input.mouseY) });
@@ -319,12 +455,9 @@ function updateGuest(dt) {
 
 function update(dt) {
   if (mode === 'home') return;
-  if (Net.isTimedOut()) {
-    opponentLeft();
-    return;
-  }
   if (mode === 'host') updateHost(dt);
   if (mode === 'guest') updateGuest(dt);
+  if (mode === 'home') return;   // 剛剛斷線結束了
   Hud.update(dt);
   syncResultScreen();
 }
@@ -338,25 +471,26 @@ function draw() {
   ctx.translate(canvas.width / 2, canvas.height / 2);
   Arena.drawGround(ctx);
   Arena.drawGrass(ctx);
-  if (mode !== 'home') Arena.drawZone(ctx, Round.zone);
 
   if (mode !== 'home') {
+    Arena.drawZone(ctx, Round.zone);
     const me = players[myId];
-    const other = players[myId === 'host' ? 'guest' : 'host'];
     // 房主自己判斷看不看得到；對手那台只要房主沒送位置就是看不到
-    const otherVisible = mode === 'host' ? canSee(me, other) : !other.hidden;
-    if (otherVisible) Player.draw(ctx, other, false);
-    Player.draw(ctx, me, true);
-    Bullets.draw(ctx, myId);
-    if (otherVisible) Hud.drawHealthBar(ctx, other, false);
-    Hud.drawHealthBar(ctx, me, true);
+    const others = ids.filter((id) => id !== myId)
+      .map((id) => players[id])
+      .filter((p) => !p.left && (mode === 'host' ? canSee(me, p) : !p.hidden));
+    for (const p of others) Player.draw(ctx, p, Hud.colorOf(p.id).ring);
+    Player.draw(ctx, me, Hud.colorOf(myId).ring);
+    Bullets.draw(ctx);
+    for (const p of others) Hud.drawHealthBar(ctx, p, Hud.colorOf(p.id).bar);
+    Hud.drawHealthBar(ctx, me, Hud.colorOf(myId).bar);
     Hud.drawPopups(ctx);
   }
   ctx.restore();
 
   // 比數和大字畫在畫面座標
   if (mode !== 'home') {
-    Hud.drawScore(ctx, myId);
+    Hud.drawScore(ctx);
     Hud.drawSuperBar(ctx, players[myId]);
     Hud.drawCenterText(ctx, myId);
   }

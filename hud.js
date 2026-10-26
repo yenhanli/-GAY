@@ -1,7 +1,31 @@
-// 畫面上的資訊：頭上血條、打中時飄的數字
+// 畫面上的資訊：頭上血條、打中時飄的數字、比數、大字、大招氣條
+
+// 每個人的顏色：自己永遠是第一組（藍），其他人照順序拿紅、橘
+const PLAYER_COLORS = [
+  { name: '你', ring: '#2f7bff', bar: '#4fd34f', bullet: '#8fd3ff', dot: '#2f7bff' },
+  { name: '紅色', ring: '#ff3b3b', bar: '#ff4b4b', bullet: '#ff7a5a', dot: '#ff3b3b' },
+  { name: '橘色', ring: '#ff9f1a', bar: '#ffa93a', bullet: '#ffc04d', dot: '#ff9f1a' },
+];
 
 const Hud = {
   popups: [],   // 飄在空中的字，例如「-20」
+  colorIndex: {},   // id → 用第幾組顏色
+  myOrder: [],      // 自己排第一個的 id 順序
+
+  // 開打時決定誰是什麼顏色
+  setupColors(ids, myId) {
+    this.myOrder = [myId, ...ids.filter((id) => id !== myId)];
+    this.colorIndex = {};
+    this.myOrder.forEach((id, i) => (this.colorIndex[id] = i));
+  },
+
+  colorOf(id) {
+    return PLAYER_COLORS[this.colorIndex[id] || 0];
+  },
+
+  order() {
+    return this.myOrder;
+  },
 
   // 在 (x, y) 飄一個字
   addPopup(x, y, text) {
@@ -16,8 +40,8 @@ const Hud = {
     this.popups = this.popups.filter((p) => p.time < 0.8);   // 0.8 秒後消失
   },
 
-  // 小人頭上的血條；isMe：自己綠色、對手紅色
-  drawHealthBar(ctx, p, isMe) {
+  // 小人頭上的血條；color：自己綠色、其他人用自己的顏色
+  drawHealthBar(ctx, p, color) {
     if (p.dead) return;
     const w = 36;
     const h = 6;
@@ -31,22 +55,25 @@ const Hud = {
     ctx.fillRect(x - 2, y - 2, w + 4, h + 4);
     ctx.fillStyle = '#5a4a3a';                    // 空掉的部分
     ctx.fillRect(x, y, w, h);
-    ctx.fillStyle = isMe ? '#4fd34f' : '#ff4b4b'; // 剩下的血
+    ctx.fillStyle = color;                        // 剩下的血
     ctx.fillRect(x, y, Math.round(w * ratio), h);
     ctx.restore();
   },
 
-  // 上方中間：比數（藍 ● ● ○ ： 紅 ● ○ ○）＋回合剩幾秒
+  // 上方中間：比數（自己藍點在左，其他人在右）＋回合剩幾秒
   // 這個跟下面的大字都畫在「畫面座標」，左上角是 (0,0)
-  drawScore(ctx, myId) {
-    const otherId = myId === 'host' ? 'guest' : 'host';
-    const W = CONFIG.round.winsNeeded;
+  drawScore(ctx) {
+    const W = Round.winsNeeded();
     const cx = ctx.canvas.width / 2;
     const y = 30;
+    const [me, ...others] = this.myOrder;
+    const groupW = W * 26;
+    const leftEdge = cx - 50 - groupW;
+    const rightEdge = cx + 50 + others.length * groupW + (others.length - 1) * 24;
 
     ctx.save();
     ctx.fillStyle = 'rgba(20, 22, 32, 0.75)';
-    ctx.fillRect(cx - 150, 6, 300, 48);
+    ctx.fillRect(leftEdge - 14, 6, rightEdge - leftEdge + 28, 48);
 
     // 圓點：贏幾回合就塗滿幾顆
     const dot = (x, filled, color) => {
@@ -61,9 +88,13 @@ const Hud = {
       }
     };
     for (let i = 0; i < W; i++) {
-      dot(cx - 50 - (W - 1 - i) * 26, i < Round.scores[myId], '#2f7bff');   // 自己在左邊、藍色
-      dot(cx + 50 + i * 26, i < Round.scores[otherId], '#ff3b3b');         // 對手在右邊、紅色
+      dot(cx - 50 - (W - 1 - i) * 26 - 13, i < Round.scores[me], this.colorOf(me).dot);   // 自己在左邊
     }
+    others.forEach((id, k) => {
+      const start = cx + 50 + k * (groupW + 24);
+      const left = players[id] && players[id].left;   // 斷線的人變灰
+      for (let i = 0; i < W; i++) dot(start + i * 26 + 13, i < Round.scores[id], left ? '#666a78' : this.colorOf(id).dot);
+    });
 
     // 中間的秒數；最後 15 秒變紅色
     ctx.font = 'bold 26px monospace';
@@ -94,6 +125,10 @@ const Hud = {
       } else if (Round.roundWinner === myId) {
         text = '你贏了這回合！';
         color = '#ffd84a';
+      } else if (gameMode === 'ffa') {
+        // 亂鬥：說是誰贏，用他的顏色
+        text = this.colorOf(Round.roundWinner).name + '贏了這回合';
+        color = this.colorOf(Round.roundWinner).ring;
       } else {
         text = Round.reason === 'time' ? '時間到，血比較少⋯' : '被打倒了！';
         color = '#ff5a5a';

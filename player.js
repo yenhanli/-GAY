@@ -135,8 +135,8 @@ const Player = {
     return { left: p.x - S, top: p.y + 14 - S * 4, width: S * 2, height: S * 4 };
   },
 
-  // isMe：自己是藍圈，對手是紅圈
-  draw(ctx, p, isMe) {
+  // ringColor：腳下圈圈的顏色（自己藍色，其他人紅、橘）
+  draw(ctx, p, ringColor) {
     const S = CONFIG.player.cellSize;
     const C = CONFIG.colors;
     const facingLeft = Math.cos(p.angle) < 0;
@@ -148,7 +148,7 @@ const Player = {
     ctx.beginPath();
     ctx.ellipse(p.x, p.y + 10, p.r + 2, (p.r + 2) * 0.55, 0, 0, Math.PI * 2);
     ctx.lineWidth = 3;
-    ctx.strokeStyle = isMe ? '#2f7bff' : '#ff3b3b';
+    ctx.strokeStyle = ringColor;
     ctx.stroke();
 
     // 倒下：整個人轉 90 度躺平、變淡

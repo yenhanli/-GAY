@@ -49,7 +49,8 @@ const CONFIG = {
 
   // 回合
   round: {
-    winsNeeded: 3,       // 先贏幾回合就贏整局（搶三）
+    winsNeeded: 3,       // 1v1：先贏幾回合就贏整局（搶三）
+    winsNeededFFA: 2,    // 3 人亂鬥：先贏幾回合（搶二）
     time: 60,            // 每回合限時幾秒
     countdown: 3,        // 開打前倒數幾秒
     between: 2,          // 回合結束後顯示誰贏幾秒，再開下一回合

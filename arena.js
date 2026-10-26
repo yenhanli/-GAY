@@ -33,6 +33,23 @@ const MAP_LEFT_HALF = [
   '............',
 ];
 
+// ===== 3 人亂鬥的地圖 =====
+// 三個出生點在六角形裡各隔 120 度。為了三個人都公平，只寫「一個人那邊」的東西，
+// 程式會左右各放一個、再轉 120 度、240 度各複製一份，所以三邊長得一模一樣。
+// 每一項是 [東西, 偏幾度, 離中心多遠]：
+//   偏幾度 = 從「中心看向出生點」那條線往左右偏幾度（0 就是正對出生點那條線上）
+//   加速板一律朝中心衝
+const FFA_FEATURES = [
+  ['wall', 0, 100], ['wall', 0, 140],                     // 中間 Y 字形的牆
+  ['wall', 20, 230], ['wall', 16, 270],                   // 出生點前面左右的掩護
+  ['wall', 60, 250], ['wall', 60, 290], ['wall', 60, 330], // 兩個出生點中間的隔牆
+  ['wall', 44, 120], ['wall', 85, 180],                   // 中間附近多幾塊掩護
+  ['wall', 30, 380],                                       // 出生點旁邊的牆
+  ['grass', 34, 160], ['grass', 40, 200], ['grass', 30, 200], // 往中間路上的草
+  ['grass', 52, 390], ['grass', 46, 370],                 // 邊邊的草
+  ['boost', 32, 300],                                      // 往中間衝的加速板
+];
+
 // 加速板箭頭 → 方向
 const BOOST_DIRS = {
   '>': { x: 1, y: 0 },
@@ -48,38 +65,82 @@ const Arena = {
   tiles: [],   // 所有格子排成一串，畫圖時方便
   cols: 0,
   rows: 0,
+  spawns: [],  // 出生點，第 0 個給房主
 
-  // 把文字地圖變成格子
-  build() {
-    const T = CONFIG.arena.tile;
+  // 蓋場地。mode：'1v1' 用上面畫的地圖，'ffa' 用 3 人亂鬥的地圖
+  build(mode) {
     this.rows = MAP_LEFT_HALF.length;
     this.cols = MAP_LEFT_HALF[0].length * 2;
     this.grid = [];
-    this.tiles = [];
+    for (let r = 0; r < this.rows; r++) this.grid.push(new Array(this.cols).fill(null));
 
+    const D = CONFIG.arena.spawnDistance;
+    if (mode === 'ffa') {
+      this.buildFFA();
+      // 左邊、右上、右下，各隔 120 度
+      this.spawns = [180, 300, 60].map((deg) => ({
+        x: Math.cos((deg * Math.PI) / 180) * D,
+        y: Math.sin((deg * Math.PI) / 180) * D,
+      }));
+    } else {
+      this.build1v1();
+      this.spawns = [{ x: -D, y: 0 }, { x: D, y: 0 }];
+    }
+
+    this.tiles = [];
+    for (const row of this.grid) {
+      for (const t of row) if (t) this.tiles.push(t);
+    }
+  },
+
+  // 1v1：把文字地圖變成格子
+  build1v1() {
     for (let r = 0; r < this.rows; r++) {
       const left = MAP_LEFT_HALF[r];
       const right = left.split('').reverse().map(mirrorChar).join('');
       const line = left + right;
-      const row = [];
-
       for (let c = 0; c < this.cols; c++) {
         const ch = line[c];
-        // 格子中心的座標（場地中心是 0,0）
-        const x = (c + 0.5) * T - (this.cols * T) / 2;
-        const y = (r + 0.5) * T - (this.rows * T) / 2;
-        let tile = null;
-
-        if (ch !== '.' && this.insideHex(x, y, 0)) {
-          if (ch === '#') tile = { type: 'wall', x, y };
-          else if (ch === 'g') tile = { type: 'grass', x, y };
-          else if (BOOST_DIRS[ch]) tile = { type: 'boost', x, y, dir: BOOST_DIRS[ch], cooldown: 0 };
-        }
-        row.push(tile);
-        if (tile) this.tiles.push(tile);
+        if (ch === '#') this.setTile(r, c, 'wall');
+        else if (ch === 'g') this.setTile(r, c, 'grass');
+        else if (BOOST_DIRS[ch]) this.setTile(r, c, 'boost', BOOST_DIRS[ch]);
       }
-      this.grid.push(row);
     }
+  },
+
+  // 3 人亂鬥：每樣東西左右各一個、再轉三個方向
+  buildFFA() {
+    const T = CONFIG.arena.tile;
+    for (const [type, offset, dist] of FFA_FEATURES) {
+      for (const side of [-1, 1]) {
+        for (const base of [180, 300, 60]) {
+          const a = ((base + side * offset) * Math.PI) / 180;
+          const x = Math.cos(a) * dist;
+          const y = Math.sin(a) * dist;
+          // 換算成第幾格
+          const c = Math.floor((x + (this.cols * T) / 2) / T);
+          const r = Math.floor((y + (this.rows * T) / 2) / T);
+          const dir = { x: -Math.cos(a), y: -Math.sin(a) };   // 朝中心
+          this.setTile(r, c, type, dir);
+        }
+      }
+    }
+  },
+
+  // 在第 r 行第 c 格放東西（六角形外面的不放）
+  setTile(r, c, type, dir) {
+    if (r < 0 || r >= this.rows || c < 0 || c >= this.cols) return;
+    const T = CONFIG.arena.tile;
+    // 格子中心的座標（場地中心是 0,0）
+    const x = (c + 0.5) * T - (this.cols * T) / 2;
+    const y = (r + 0.5) * T - (this.rows * T) / 2;
+    if (!this.insideHex(x, y, 0)) return;
+    const tile = { type, x, y };
+    if (type === 'boost') {
+      tile.dir = dir;
+      tile.cooldown = 0;
+    }
+    this.grid[r][c] = tile;
   },
 
   // 點 (x,y) 有沒有在六角形裡面；margin = 離邊界至少要多遠

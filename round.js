@@ -1,21 +1,28 @@
-// 回合、比數、倒數、搶三
+// 回合、比數、倒數、搶三（亂鬥是搶二）
 // 只有房主會跑 update；對手那台直接用房主送來的資料蓋掉這裡的值，照著畫
+// 會用到 main.js 的 players、ids、activeIds()、gameMode、resetField()
 
 const Round = {
   phase: 'countdown',   // 'countdown' 倒數、'fight' 開打、'roundEnd' 這回合結束、'matchEnd' 整局結束
   timer: 0,             // 這個階段還剩幾秒
-  scores: { host: 0, guest: 0 },
+  scores: {},           // id → 贏了幾回合
   zone: 0,              // 安全區大小（六角形中心到角）
-  roundWinner: null,    // 這回合誰贏：'host'、'guest'，平手不算就是 null
+  roundWinner: null,    // 這回合誰贏（id），平手不算就是 null
   reason: '',           // 怎麼結束的：'ko' 有人倒下、'time' 時間到
   matchWinner: null,    // 整局誰贏
-  rematch: { host: false, guest: false },   // 誰按了「再來一局」
+  rematch: {},          // id → 有沒有按「再來一局」
+
+  // 贏幾回合就贏整局
+  winsNeeded() {
+    return gameMode === 'ffa' ? CONFIG.round.winsNeededFFA : CONFIG.round.winsNeeded;
+  },
 
   // 整局重來：比數歸零
   resetMatch() {
-    this.scores = { host: 0, guest: 0 };
+    this.scores = {};
+    for (const id of ids) this.scores[id] = 0;
     this.matchWinner = null;
-    this.rematch = { host: false, guest: false };
+    this.rematch = {};
     this.startRound();
   },
 
@@ -42,10 +49,10 @@ const Round = {
       this.checkRoundOver();
     } else if (this.phase === 'roundEnd') {
       if (this.timer <= 0) {
-        const W = CONFIG.round.winsNeeded;
-        if (this.scores.host >= W || this.scores.guest >= W) {
+        const winner = Object.keys(this.scores).find((id) => this.scores[id] >= this.winsNeeded());
+        if (winner) {
           this.phase = 'matchEnd';
-          this.matchWinner = this.scores.host >= W ? 'host' : 'guest';
+          this.matchWinner = winner;
         } else {
           this.startRound();
         }
@@ -76,17 +83,17 @@ const Round = {
   },
 
   checkRoundOver() {
-    const h = players.host;
-    const g = players.guest;
+    const alive = activeIds().filter((id) => !players[id].dead);
 
-    if (h.dead || g.dead) {
-      // 兩個同時倒下就不算
-      this.endRound(h.dead && g.dead ? null : h.dead ? 'guest' : 'host', 'ko');
+    if (alive.length <= 1) {
+      // 只剩一個人站著就是他贏；同時全倒就不算
+      this.endRound(alive.length === 1 ? alive[0] : null, 'ko');
     } else if (this.timer <= 0) {
-      // 時間到：比剩下的血％，一樣多就不算
-      const hp = Math.round((h.hp / h.maxHp) * 100);
-      const gp = Math.round((g.hp / g.maxHp) * 100);
-      this.endRound(hp === gp ? null : hp > gp ? 'host' : 'guest', 'time');
+      // 時間到：還站著的人比血％，最多的贏；最多的不只一個就不算
+      const pct = (id) => Math.round((players[id].hp / players[id].maxHp) * 100);
+      const best = Math.max(...alive.map(pct));
+      const top = alive.filter((id) => pct(id) === best);
+      this.endRound(top.length === 1 ? top[0] : null, 'time');
     }
   },
 
@@ -98,11 +105,11 @@ const Round = {
     if (winner) this.scores[winner] += 1;
   },
 
-  // 有人按了「再來一局」；兩個都按了就重開
+  // 有人按了「再來一局」；還在的人都按了就重開
   pressRematch(id) {
     if (this.phase !== 'matchEnd') return;
     this.rematch[id] = true;
-    if (this.rematch.host && this.rematch.guest) this.resetMatch();
+    if (activeIds().every((pid) => this.rematch[pid])) this.resetMatch();
   },
 
   // 打包給對手那台
