@@ -84,6 +84,11 @@
       <input id="codeInput" maxlength="4" placeholder="房號" autocomplete="off">
       <button id="btnJoin">加入</button>
     </div>
+    <div class="or">或是自己練習</div>
+    <div class="row">
+      <button id="btnPractice1v1" class="plain">練習 1v1（打 1 隻機器人）</button>
+      <button id="btnPracticeFFA" class="plain">練習亂鬥（打 2 隻機器人）</button>
+    </div>
     <p id="homeError" class="error"></p>
   </div>
 
@@ -99,7 +104,10 @@
   <div id="result" class="screen hidden">
     <h1 id="resultTitle">你贏了！</h1>
     <p id="resultScore" class="big"></p>
-    <button id="btnRematch">再來一局</button>
+    <div class="row">
+      <button id="btnRematch">再來一局</button>
+      <button id="btnHome" class="plain">回首頁</button>
+    </div>
     <p id="rematchHint"></p>
   </div>
 
@@ -109,16 +117,17 @@
   </div>
 
   <!-- 順序有差：後面的檔會用到前面的東西 -->
-  <!-- ?v=9 是版本號：每次更新程式就把所有的 v= 改成下一個數字，
+  <!-- ?v=10 是版本號：每次更新程式就把所有的 v= 改成下一個數字，
        瀏覽器才會重新下載，不會拿到新舊混在一起的檔案 -->
-  <script src="config.js?v=9"></script>
-  <script src="input.js?v=9"></script>
-  <script src="arena.js?v=9"></script>
-  <script src="player.js?v=9"></script>
-  <script src="bullet.js?v=9"></script>
-  <script src="hud.js?v=9"></script>
-  <script src="round.js?v=9"></script>
-  <script src="net.js?v=9"></script>
-  <script src="main.js?v=9"></script>
+  <script src="config.js?v=10"></script>
+  <script src="input.js?v=10"></script>
+  <script src="arena.js?v=10"></script>
+  <script src="player.js?v=10"></script>
+  <script src="bullet.js?v=10"></script>
+  <script src="hud.js?v=10"></script>
+  <script src="round.js?v=10"></script>
+  <script src="bot.js?v=10"></script>
+  <script src="net.js?v=10"></script>
+  <script src="main.js?v=10"></script>
 </body>
 </html>

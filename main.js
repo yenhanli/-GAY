@@ -18,6 +18,7 @@ let ids = [];            // 這局有哪些人，例如 ['p0', 'p1', 'p2']
 let players = {};        // id → 小人
 let myId = 'p0';
 let leftIds = new Set(); // 房主：中途斷線的人
+let practice = false;    // 練習模式：不連線，其他人都是機器人
 let sendTimer = 0;       // 房主：距離下次送狀態還有幾秒
 let heartbeatTimer = 0;  // 對手：距離下次一定要送按鍵還有幾秒
 let lastInputText = '';  // 對手：上次送出的按鍵，沒變就不送
@@ -78,7 +79,8 @@ function syncResultScreen() {
   const othersPressed = activeIds().filter((id) => id !== myId && Round.rematch[id]).length;
   document.getElementById('btnRematch').disabled = pressed;
   let hint = '';
-  if (pressed) hint = gameMode === '1v1' ? '等對手按「再來一局」⋯' : '等其他人按「再來一局」⋯';
+  if (practice) hint = '';
+  else if (pressed) hint = gameMode === '1v1' ? '等對手按「再來一局」⋯' : '等其他人按「再來一局」⋯';
   else if (othersPressed) hint = gameMode === '1v1' ? '對手想再來一局！' : '有 ' + othersPressed + ' 個人想再來一局！';
   document.getElementById('rematchHint').textContent = hint;
 }
@@ -91,9 +93,36 @@ document.getElementById('btnRematch').onclick = () => {
   }
 };
 
+// 回首頁（結算畫面的按鈕、練習中按 Esc）
+function goHome() {
+  Net.leave();
+  mode = 'home';
+  practice = false;
+  Bots.setup([]);
+  showScreen('home');
+}
+document.getElementById('btnHome').onclick = goHome;
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'Escape' && practice && mode !== 'home') goHome();
+});
+
 // ===== 首頁 =====
 
+// 練習模式：不用連線，直接跟機器人打
+function startPractice(chosenMode) {
+  Net.leave();
+  practice = true;
+  const list = [];
+  for (let i = 0; i < MAX_PLAYERS[chosenMode]; i++) list.push('p' + i);
+  Bots.setup(list);
+  startMatch('host', chosenMode, list, 'p0');
+}
+document.getElementById('btnPractice1v1').onclick = () => startPractice('1v1');
+document.getElementById('btnPracticeFFA').onclick = () => startPractice('ffa');
+
 function createClicked(chosenMode) {
+  practice = false;
+  Bots.setup([]);
   gameMode = chosenMode;
   const max = MAX_PLAYERS[gameMode];
   document.getElementById('homeError').textContent = '';
@@ -115,6 +144,8 @@ function joinClicked() {
     showHomeError('房號是 4 個英文字母');
     return;
   }
+  practice = false;
+  Bots.setup([]);
   document.getElementById('homeError').textContent = '';
   setWaiting(code, '連線中⋯');
   showScreen('waiting');
@@ -205,6 +236,7 @@ function hostReceive(msg, id, guest) {
 // 房主：某個人的按鍵從哪裡來
 function inputOf(id) {
   if (id === 'p0') return Input;
+  if (Bots.isBot(id)) return Bots.inputOf(id);
   const g = Net.guests[Number(id.slice(1))];
   return g ? g.input : emptyInput();
 }
@@ -314,6 +346,7 @@ function updateHost(dt) {
   Arena.update(dt);
   const active = activeIds().map((id) => players[id]);
   if (Round.phase === 'fight') {
+    Bots.update(dt);   // 機器人先「按按鍵」
     for (const p of active) Player.update(p, inputOf(p.id), dt);
     // 倒下的人不會再被打中
     Bullets.update(dt, active.filter((p) => !p.dead), onBulletHit);
@@ -322,6 +355,10 @@ function updateHost(dt) {
     Bullets.update(dt, [], null);   // 還在飛的子彈飛完
   }
   Round.update(dt);
+  // 機器人永遠想再來一局
+  if (Round.phase === 'matchEnd') {
+    for (const id of ids) if (Bots.isBot(id)) Round.rematch[id] = true;
+  }
 
   sendTimer -= dt;
   if (sendTimer <= 0) {

@@ -73,6 +73,14 @@ const CONFIG = {
     revealAfterShot: 1,    // 在草裡開槍後露出來幾秒
   },
 
+  // 練習模式的機器人（數字越小越難）
+  bot: {
+    thinkEvery: 0.1,          // 每幾秒想一次要怎麼走、要不要開槍
+    reaction: 0.35,           // 看到人以後過幾秒才開始開槍
+    aimError: 7,              // 瞄準最多偏幾度
+    preferRange: [170, 300],  // 喜歡跟目標保持多遠（太近會退、太遠會靠近）
+  },
+
   // 連線
   net: {
     stateRate: 20,         // 房主每秒送幾次畫面狀態
