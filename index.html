@@ -51,6 +51,17 @@
     }
     button:hover { background: #ffe57d; }
     button:disabled { opacity: 0.45; cursor: default; }
+    /* 選部族的按鈕 */
+    button.tribe {
+      width: 230px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      background: #f4ecd8;
+      font-size: 24px;
+    }
+    button.tribe small { font-size: 15px; line-height: 1.4; }
+    button.tribe.chosen { background: #ffd84a; outline: 4px solid #fff3a0; }
     button.plain { background: transparent; color: #f4ecd8; border-color: #8a8fa3; font-size: 18px; }
     input {
       font: inherit;
@@ -100,6 +111,13 @@
     <button id="btnCancel" class="plain">取消</button>
   </div>
 
+  <!-- 每回合開始前選部族 -->
+  <div id="pick" class="screen hidden">
+    <h1>選部族</h1>
+    <div id="pickList" class="row"></div>
+    <p id="pickHint"></p>
+  </div>
+
   <!-- 整局結束 -->
   <div id="result" class="screen hidden">
     <h1 id="resultTitle">你贏了！</h1>
@@ -117,17 +135,19 @@
   </div>
 
   <!-- 順序有差：後面的檔會用到前面的東西 -->
-  <!-- ?v=10 是版本號：每次更新程式就把所有的 v= 改成下一個數字，
+  <!-- ?v=12 是版本號：每次更新程式就把所有的 v= 改成下一個數字，
        瀏覽器才會重新下載，不會拿到新舊混在一起的檔案 -->
-  <script src="config.js?v=10"></script>
-  <script src="input.js?v=10"></script>
-  <script src="arena.js?v=10"></script>
-  <script src="player.js?v=10"></script>
-  <script src="bullet.js?v=10"></script>
-  <script src="hud.js?v=10"></script>
-  <script src="round.js?v=10"></script>
-  <script src="bot.js?v=10"></script>
-  <script src="net.js?v=10"></script>
-  <script src="main.js?v=10"></script>
+  <script src="config.js?v=12"></script>
+  <script src="input.js?v=12"></script>
+  <script src="arena.js?v=12"></script>
+  <script src="player.js?v=12"></script>
+  <script src="bullet.js?v=12"></script>
+  <script src="tribes/basic.js?v=12"></script>
+  <script src="tribes/mecha.js?v=12"></script>
+  <script src="hud.js?v=12"></script>
+  <script src="round.js?v=12"></script>
+  <script src="bot.js?v=12"></script>
+  <script src="net.js?v=12"></script>
+  <script src="main.js?v=12"></script>
 </body>
 </html>

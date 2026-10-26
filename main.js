@@ -32,7 +32,7 @@ function activeIds() {
 
 // ===== 畫面切換 =====
 
-const screens = ['home', 'waiting', 'result', 'message'];
+const screens = ['home', 'waiting', 'pick', 'result', 'message'];
 let currentScreen = 'home';
 function showScreen(id) {
   currentScreen = id;
@@ -62,10 +62,47 @@ function endWithMessage(text) {
   }, 2500);
 }
 
-// 整局結束就跳結算畫面，重開了就關掉
-function syncResultScreen() {
-  const want = Round.phase === 'matchEnd' ? 'result' : null;
+// ===== 選部族畫面 =====
+
+// 一個部族一個按鈕（名字＋說明＋血量速度）
+for (const tribeId of TRIBE_ORDER) {
+  const t = TRIBES[tribeId];
+  const stats = CONFIG.tribes[tribeId];
+  const btn = document.createElement('button');
+  btn.className = 'tribe';
+  btn.dataset.tribe = tribeId;
+  btn.innerHTML = '<b>' + t.name + '</b><small>' + t.desc.replace('\n', '<br>') +
+    '<br>血 ' + stats.hp + '・速度 ' + stats.speed + '</small>';
+  btn.onclick = () => pickClicked(tribeId);
+  document.getElementById('pickList').appendChild(btn);
+}
+
+function pickClicked(tribeId) {
+  if (Round.phase !== 'pick') return;
+  if (mode === 'host') Round.pick(myId, tribeId);
+  if (mode === 'guest') {
+    Round.picks[myId] = tribeId;   // 先在自己這邊亮起來，房主下次送狀態就會確認
+    Round.picked[myId] = true;
+    Net.send({ t: 'pick', tribe: tribeId });
+  }
+}
+
+function syncPickScreen() {
+  const mine = Round.picks[myId] || 'basic';
+  for (const btn of document.querySelectorAll('#pickList .tribe')) {
+    btn.classList.toggle('chosen', btn.dataset.tribe === mine);
+  }
+  const done = activeIds().filter((id) => Round.picked[id]).length;
+  document.getElementById('pickHint').textContent =
+    '還有 ' + Math.max(0, Math.ceil(Round.timer)) + ' 秒（沒選就用上一回合的）　' +
+    (Round.picked[myId] ? '已選好，' : '') + done + '/' + activeIds().length + ' 人選好了';
+}
+
+// 依照回合的階段切換畫面：選部族、整局結束跳結算畫面，其他時候不蓋東西
+function syncScreens() {
+  const want = Round.phase === 'matchEnd' ? 'result' : Round.phase === 'pick' ? 'pick' : null;
   if (currentScreen !== want) showScreen(want);
+  if (want === 'pick') syncPickScreen();
   if (want !== 'result') return;
 
   const won = Round.matchWinner === myId;
@@ -231,6 +268,7 @@ function hostReceive(msg, id, guest) {
     else input.superPressed = true;
   }
   if (msg.t === 'rematch') Round.pressRematch(id);
+  if (msg.t === 'pick') Round.pick(id, msg.tribe);
 }
 
 // 房主：某個人的按鍵從哪裡來
@@ -258,6 +296,7 @@ function startMatch(asMode, chosenMode, idList, me) {
 
   Arena.build(gameMode);
   Hud.setupColors(ids, myId);
+  Round.picks = {};
   Round.resetMatch();   // 比數歸零、開第一回合（會呼叫下面的 resetField）
   showScreen(null);
 }
@@ -267,7 +306,7 @@ function resetField() {
   players = {};
   ids.forEach((id, i) => {
     const s = Arena.spawns[i];
-    players[id] = createPlayer(id, s.x, s.y);
+    players[id] = createPlayer(id, s.x, s.y, Round.picks[id] || 'basic');
     if (leftIds.has(id)) {
       players[id].left = true;
       players[id].dead = true;
@@ -315,20 +354,30 @@ function showHit(id, dmg) {
 
 // ===== 房主 =====
 
-// 子彈打中人（只有房主會算）
-function onBulletHit(bullet, p) {
-  const dmg = bullet.damage;
-  Player.takeDamage(p, dmg);
-  // 普攻打中才集大招氣
-  const shooter = players[bullet.owner];
-  if (!bullet.isSuper && shooter) shooter.super = Math.min(CONFIG.super.hitsToCharge, shooter.super + 1);
-  showHit(p.id, dmg);
-  // 告訴對手們：被打的、開槍的、或看得到被打的人，才會收到
+// p 的敵人：還在場上、還站著的其他人（部族的近戰、陀螺會用到）
+function enemiesOf(p) {
+  return activeIds().map((id) => players[id]).filter((t) => t !== p && !t.dead);
+}
+
+// 打中人：扣血、閃白飄字、（charge 為 true 時）幫攻擊的人集大招氣。只有房主會算
+function dealDamage(attacker, target, dmg, charge) {
+  if (target.dead) return;
+  Player.takeDamage(target, dmg);
+  if (charge && attacker) attacker.super = Math.min(attacker.superMax, attacker.super + 1);
+  showHit(target.id, dmg);
+  // 告訴對手們：被打的、攻擊的、或看得到被打的人，才會收到
   for (const slot of Object.keys(Net.guests)) {
     const viewer = players['p' + slot];
     if (!viewer) continue;
-    if (viewer === p || viewer === shooter || canSee(viewer, p)) Net.sendTo(Number(slot), { t: 'hit', id: p.id, dmg });
+    if (viewer === target || viewer === attacker || canSee(viewer, target)) {
+      Net.sendTo(Number(slot), { t: 'hit', id: target.id, dmg });
+    }
   }
+}
+
+// 子彈打中人：普攻子彈會集氣，大招子彈不會
+function onBulletHit(bullet, p) {
+  dealDamage(players[bullet.owner], p, bullet.damage, !bullet.isSuper);
 }
 
 // 還沒開打（倒數、回合結束、整局結束）：不能動、不能射，只能轉頭瞄準
@@ -354,8 +403,13 @@ function updateHost(dt) {
     for (const p of active) aimOnly(p, inputOf(p.id), dt);
     Bullets.update(dt, [], null);   // 還在飛的子彈飛完
   }
+  // 機器人：選部族時隨便挑一個；整局結束永遠想再來一局
+  if (Round.phase === 'pick') {
+    for (const id of ids) {
+      if (Bots.isBot(id) && !Round.picked[id]) Round.pick(id, TRIBE_ORDER[Math.floor(Math.random() * TRIBE_ORDER.length)]);
+    }
+  }
   Round.update(dt);
-  // 機器人永遠想再來一局
   if (Round.phase === 'matchEnd') {
     for (const id of ids) if (Bots.isBot(id)) Round.rematch[id] = true;
   }
@@ -406,6 +460,9 @@ function packPlayer(p, visible) {
     hp: Math.round(p.hp),
     dead: p.dead,
     super: p.super,
+    tribe: p.tribe,
+    slash: p.slashAnim > 0 ? Math.round(p.slashAnim * 100) / 100 : 0,   // 機甲剛砍下去
+    spinning: p.spinTime > 0,                                          // 機甲在轉
   };
 }
 
@@ -431,6 +488,13 @@ function applyState(msg) {
     p.hp = s.hp;
     p.dead = s.dead;
     p.super = s.super;
+    if (p.tribe !== s.tribe) {
+      p.tribe = s.tribe;
+      p.maxHp = CONFIG.tribes[s.tribe].hp;
+      p.superMax = CONFIG.tribes[s.tribe].superHits;
+    }
+    if (s.slash > 0) p.slashAnim = s.slash;
+    p.spinning = s.spinning;
     if (id !== myId) p.angle = s.angle;
   }
   const boosts = Arena.tiles.filter((t) => t.type === 'boost');
@@ -447,6 +511,7 @@ function updateGuest(dt) {
   const k = Math.min(1, dt * CONFIG.net.smoothing);
   for (const p of Object.values(players)) {
     if (p.flash > 0) p.flash -= dt;
+    if (p.slashAnim > 0) p.slashAnim -= dt;
     if (p.targetX === undefined) continue;
     p.x += (p.targetX - p.x) * k;
     p.y += (p.targetY - p.y) * k;
@@ -496,7 +561,7 @@ function update(dt) {
   if (mode === 'guest') updateGuest(dt);
   if (mode === 'home') return;   // 剛剛斷線結束了
   Hud.update(dt);
-  syncResultScreen();
+  syncScreens();
 }
 
 function draw() {

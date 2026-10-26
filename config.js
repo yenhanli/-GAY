@@ -2,10 +2,8 @@
 // 單位：距離 px、時間秒。
 
 const CONFIG = {
-  // 基本小人
+  // 所有小人共用的（血量、速度每個部族不一樣，在下面 tribes 裡）
   player: {
-    hp: 100,
-    speed: 200,      // 每秒走幾 px
     radius: 14,      // 碰撞半徑（撞牆用的圓有多大）
     cellSize: 8,     // 小人每一格畫多大
     regenDelay: 3,   // 幾秒沒被打到開始回血
@@ -24,13 +22,35 @@ const CONFIG = {
 
   // 大招（基本小人）
   super: {
-    hitsToCharge: 5,     // 普攻打中幾發集滿
     bullets: 5,          // 一次射幾發
     spread: 30,          // 扇形往左右各張開幾度
     damage: 20,          // 每發扣多少血
   },
 
-  // 小人配色（改這裡換顏色）
+  // 部族（程式在 tribes/ 資料夾，一個部族一個檔）
+  tribes: {
+    basic: {
+      hp: 100,
+      speed: 200,          // 每秒走幾 px
+      superHits: 5,        // 打中幾次集滿大招（普攻、大招的數字在上面 attack、super）
+    },
+    mecha: {
+      hp: 130,             // 血比較厚
+      speed: 230,          // 走比較快，用來彌補打不遠
+      superHits: 3,        // 砍中 3 次集滿（一下普攻砍中算 1 次）
+      reach: 60,           // 刀砍得到多遠
+      arc: 70,             // 往前左右各幾度內砍得到
+      slashDamage: 15,     // 每刀扣多少
+      slashGap: 0.15,      // 兩刀之間隔幾秒
+      cooldown: 0.6,       // 砍完要等幾秒才能再砍
+      spinTime: 3,         // 大招：陀螺轉幾秒
+      spinTick: 0.25,      // 每幾秒扣一次
+      spinDamage: 10,      // 每次扣多少
+      spinReach: 60,       // 轉的時候多近會被打到
+    },
+  },
+
+  // 小人配色（改這裡換顏色；部族自己的衣服顏色在 tribes/ 的檔案裡）
   colors: {
     hair: '#4a2c1a',
     skin: '#f2c49b',
@@ -53,6 +73,7 @@ const CONFIG = {
     winsNeededFFA: 2,    // 3 人亂鬥：先贏幾回合（搶二）
     time: 60,            // 每回合限時幾秒
     countdown: 3,        // 開打前倒數幾秒
+    pickTime: 8,         // 每回合開始前選部族的時間
     between: 2,          // 回合結束後顯示誰贏幾秒，再開下一回合
     zoneStart: 15,       // 剩幾秒時開始縮圈
     zoneEndRadius: 160,  // 縮到多小（六角形中心到角）
@@ -78,7 +99,7 @@ const CONFIG = {
     thinkEvery: 0.1,          // 每幾秒想一次要怎麼走、要不要開槍
     reaction: 0.35,           // 看到人以後過幾秒才開始開槍
     aimError: 7,              // 瞄準最多偏幾度
-    preferRange: [170, 300],  // 喜歡跟目標保持多遠（太近會退、太遠會靠近）
+    // 跟目標保持多遠、多近才攻擊，每個部族不一樣，寫在 tribes/ 各檔的 bot
   },
 
   // 連線

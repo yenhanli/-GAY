@@ -1,21 +1,45 @@
-// 小人：移動、瞄準、像素畫法
+// 小人：移動、瞄準、攻擊、像素畫法
+//
+// 每個部族（基本小人、機甲⋯）放在 tribes/ 資料夾，一個檔一個部族，裡面寫：
+//   name / desc         選部族畫面顯示的名字和說明
+//   colors              這個部族的衣服、鈕扣顏色
+//   cooldown            普攻完要等幾秒
+//   attack(p)           按左鍵時做什麼
+//   super(p)            大招集滿按右鍵時做什麼
+//   busy(p)             （可以不寫）回傳 true 時不能普攻、不能放大招
+//   update(p, dt)       （可以不寫）每一幀要做的事，只有房主會跑
+//   drawWeapon(ctx, p)  （可以不寫）畫手上的武器；不寫就畫一隻手
+//   bot                 練習模式的機器人怎麼打：{ near, far, attackDist, superDist }
+// 數值放在 config.js 的 tribes。
 
-function createPlayer(id, x, y) {
+const TRIBES = {};
+const TRIBE_ORDER = [];   // 選部族畫面的順序
+
+function addTribe(id, tribe) {
+  TRIBES[id] = tribe;
+  TRIBE_ORDER.push(id);
+}
+
+function createPlayer(id, x, y, tribeId = 'basic') {
+  const stats = CONFIG.tribes[tribeId];
   return {
     type: 'player',
     id,
+    tribe: tribeId,
     x,
     y,
     r: CONFIG.player.radius,
-    hp: CONFIG.player.hp,
-    maxHp: CONFIG.player.hp,
+    hp: stats.hp,
+    maxHp: stats.hp,
+    speed: stats.speed,
+    superMax: stats.superHits,   // 打中幾次集滿大招
     angle: 0,          // 面向哪個方向（弧度），0 是正右邊
     super: 0,
     boostTime: 0,      // 加速還剩幾秒
     boostDir: { x: 0, y: 0 },
     inGrass: false,
-    shootCooldown: 0,  // 還要等幾秒才能再射
-    revealTime: 0,     // 在草裡開槍後，還會露出來幾秒
+    shootCooldown: 0,  // 還要等幾秒才能再攻擊
+    revealTime: 0,     // 在草裡攻擊後，還會露出來幾秒
     sinceHit: 99,      // 距離上次被打中幾秒（回血用）
     flash: 0,          // 閃白還剩幾秒
     dead: false,       // 倒下了沒
@@ -36,6 +60,7 @@ const PLAYER_CELLS = [
 
 const Player = {
   update(p, input, dt) {
+    const tribe = TRIBES[p.tribe];
     if (p.flash > 0) p.flash -= dt;
 
     // 倒下了就不能動、不能射
@@ -62,7 +87,7 @@ const Player = {
       dy /= len;
     }
 
-    let speed = CONFIG.player.speed;
+    let speed = p.speed;
 
     // 踩到加速板
     const tile = Arena.tileAt(p.x, p.y);
@@ -97,14 +122,19 @@ const Player = {
     const under = Arena.tileAt(p.x, p.y);
     p.inGrass = !!under && under.type === 'grass';
 
-    // 射擊：點一下射一發；還在冷卻就不射（這一下就算了）
+    // 部族自己每一幀要做的事（例如機甲的第二刀、陀螺）
+    if (tribe.update) tribe.update(p, dt);
+
+    const busy = tribe.busy && tribe.busy(p);
+
+    // 普攻：點一下攻擊一次；還在冷卻就不攻擊（這一下就算了）
     if (p.shootCooldown > 0) p.shootCooldown -= dt;
     if (p.revealTime > 0) p.revealTime -= dt;
     if (input.shootPressed) {
       input.shootPressed = false;
-      if (p.shootCooldown <= 0) {
-        Bullets.spawn(p);
-        p.shootCooldown = CONFIG.attack.cooldown;
+      if (p.shootCooldown <= 0 && !busy) {
+        tribe.attack(p);
+        p.shootCooldown = tribe.cooldown();
         p.revealTime = CONFIG.grass.revealAfterShot;
       }
     }
@@ -112,8 +142,8 @@ const Player = {
     // 大招：集滿才能放，放完歸零；沒集滿按了就算了
     if (input.superPressed) {
       input.superPressed = false;
-      if (p.super >= CONFIG.super.hitsToCharge) {
-        Bullets.spawnFan(p);
+      if (p.super >= p.superMax && !busy) {
+        tribe.super(p);
         p.super = 0;
         p.revealTime = CONFIG.grass.revealAfterShot;
       }
@@ -138,7 +168,8 @@ const Player = {
   // ringColor：腳下圈圈的顏色（自己藍色，其他人紅、橘）
   draw(ctx, p, ringColor) {
     const S = CONFIG.player.cellSize;
-    const C = CONFIG.colors;
+    const tribe = TRIBES[p.tribe] || TRIBES.basic;
+    const C = { ...CONFIG.colors, ...(tribe.colors || {}) };
     const facingLeft = Math.cos(p.angle) < 0;
 
     ctx.save();
@@ -186,15 +217,20 @@ const Player = {
       return;
     }
 
-    // 手（一個小方塊，繞著小人指向滑鼠）
+    if (tribe.drawWeapon) tribe.drawWeapon(ctx, p);
+    else this.drawHand(ctx, p, C.skin);
+
+    ctx.restore();
+  },
+
+  // 手（一個小方塊，繞著小人指向滑鼠）
+  drawHand(ctx, p, skin) {
     const hx = p.x + Math.cos(p.angle) * 18;
     const hy = p.y - 2 + Math.sin(p.angle) * 18;
-    ctx.fillStyle = C.skin;
+    ctx.fillStyle = skin;
     ctx.fillRect(Math.round(hx - 3), Math.round(hy - 3), 6, 6);
     ctx.strokeStyle = '#3a2f22';
     ctx.lineWidth = 1;
     ctx.strokeRect(Math.round(hx - 3) + 0.5, Math.round(hy - 3) + 0.5, 5, 5);
-
-    ctx.restore();
   },
 };

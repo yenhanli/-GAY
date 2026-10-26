@@ -3,7 +3,9 @@
 // 會用到 main.js 的 players、ids、activeIds()、gameMode、resetField()
 
 const Round = {
-  phase: 'countdown',   // 'countdown' 倒數、'fight' 開打、'roundEnd' 這回合結束、'matchEnd' 整局結束
+  phase: 'countdown',   // 'pick' 選部族、'countdown' 倒數、'fight' 開打、'roundEnd' 這回合結束、'matchEnd' 整局結束
+  picks: {},            // id → 選了哪個部族（下一回合沿用，沒選就是上一回合的）
+  picked: {},           // id → 這次選部族時間有沒有按過
   timer: 0,             // 這個階段還剩幾秒
   scores: {},           // id → 贏了幾回合
   zone: 0,              // 安全區大小（六角形中心到角）
@@ -20,10 +22,30 @@ const Round = {
   // 整局重來：比數歸零
   resetMatch() {
     this.scores = {};
-    for (const id of ids) this.scores[id] = 0;
+    for (const id of ids) {
+      this.scores[id] = 0;
+      if (!this.picks[id]) this.picks[id] = 'basic';
+    }
     this.matchWinner = null;
     this.rematch = {};
-    this.startRound();
+    this.startPick();
+  },
+
+  // 每回合開始前選部族
+  startPick() {
+    resetField();   // 大家先回出生點（在 main.js）
+    this.phase = 'pick';
+    this.timer = CONFIG.round.pickTime;
+    this.picked = {};
+    this.zone = CONFIG.arena.radius;
+  },
+
+  // 有人選了部族；還在的人都選好了就提早開始
+  pick(id, tribeId) {
+    if (this.phase !== 'pick' || !TRIBES[tribeId]) return;
+    this.picks[id] = tribeId;
+    this.picked[id] = true;
+    if (activeIds().every((pid) => this.picked[pid])) this.timer = Math.min(this.timer, 0.6);
   },
 
   // 開新的一回合：大家回出生點、血補滿，倒數 3 秒
@@ -39,7 +61,9 @@ const Round = {
   update(dt) {
     this.timer -= dt;
 
-    if (this.phase === 'countdown') {
+    if (this.phase === 'pick') {
+      if (this.timer <= 0) this.startRound();
+    } else if (this.phase === 'countdown') {
       if (this.timer <= 0) {
         this.phase = 'fight';
         this.timer = CONFIG.round.time;
@@ -54,7 +78,7 @@ const Round = {
           this.phase = 'matchEnd';
           this.matchWinner = winner;
         } else {
-          this.startRound();
+          this.startPick();
         }
       }
     }
@@ -117,6 +141,8 @@ const Round = {
     return {
       phase: this.phase,
       timer: Math.round(this.timer * 10) / 10,
+      picks: this.picks,
+      picked: this.picked,
       scores: this.scores,
       zone: Math.round(this.zone),
       roundWinner: this.roundWinner,

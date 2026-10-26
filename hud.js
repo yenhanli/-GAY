@@ -150,7 +150,7 @@ const Hud = {
 
   // 左下：大招氣條，集滿會閃（畫面座標）
   drawSuperBar(ctx, p) {
-    const full = CONFIG.super.hitsToCharge;
+    const full = p.superMax;
     const ratio = Math.min(1, p.super / full);
     const x = 20;
     const y = ctx.canvas.height - 44;

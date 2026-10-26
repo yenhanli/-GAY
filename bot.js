@@ -81,7 +81,7 @@ const Bots = {
       // 有目標：保持一段距離，左右繞著閃子彈
       const ux = (target.x - me.x) / best;
       const uy = (target.y - me.y) / best;
-      const [near, far] = CONFIG.bot.preferRange;
+      const { near, far } = TRIBES[me.tribe].bot;
       const forward = best > far ? 1 : best < near ? -1 : 0;
       brain.strafeTimer -= step;
       if (brain.strafeTimer <= 0) {
@@ -137,9 +137,10 @@ const Bots = {
       input.mouseX = me.x + Math.cos(a) * best;
       input.mouseY = me.y + Math.sin(a) * best;
 
+      const plan = TRIBES[me.tribe].bot;
       const canShoot = brain.seenTime >= CONFIG.bot.reaction && clearShot(me, target);
-      if (canShoot && best < CONFIG.attack.range - 10) input.shootPressed = true;
-      if (canShoot && best < 260 && me.super >= CONFIG.super.hitsToCharge) input.superPressed = true;
+      if (canShoot && best < plan.attackDist) input.shootPressed = true;
+      if (canShoot && best < plan.superDist && me.super >= me.superMax) input.superPressed = true;
     } else {
       // 沒目標就看著走的方向
       input.mouseX = me.x + vx;
