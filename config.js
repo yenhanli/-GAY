@@ -48,6 +48,24 @@ const CONFIG = {
       spinDamage: 10,      // 每次扣多少
       spinReach: 60,       // 轉的時候多近會被打到
     },
+    future: {
+      hp: 100,
+      speed: 200,
+      superHits: 5,        // 打中 5 發集滿
+      cooldown: 0.5,       // 射完要等幾秒才能再射
+      range: 450,          // 能量砲飛多遠
+      bulletSpeed: 600,
+      sizeMin: 4,          // 剛射出去多大顆
+      sizeMax: 12,         // 飛到射程盡頭多大顆
+      damageMin: 10,       // 剛射出去打中扣多少
+      damageMax: 30,       // 飛到射程盡頭打中扣多少
+      mechTime: 6,         // 大招：變身機甲幾秒
+      shield: 50,          // 變身時多一條護盾（先扣護盾再扣血）
+      sawReach: 50,        // 鋸子多近嚕得到
+      sawArc: 60,          // 往前左右各幾度內嚕得到
+      sawTick: 0.3,        // 每幾秒嚕一次
+      sawDamage: 12,       // 每次扣多少
+    },
   },
 
   // 小人配色（改這裡換顏色；部族自己的衣服顏色在 tribes/ 的檔案裡）

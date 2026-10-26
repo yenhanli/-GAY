@@ -57,6 +57,15 @@ const Hud = {
     ctx.fillRect(x, y, w, h);
     ctx.fillStyle = color;                        // 剩下的血
     ctx.fillRect(x, y, Math.round(w * ratio), h);
+
+    // 有護盾的話，血條上面再一條淺藍色的
+    if (p.shield > 0) {
+      const sy = y - 7;
+      ctx.fillStyle = '#3a2f22';
+      ctx.fillRect(x - 2, sy - 2, w + 4, 5 + 2);
+      ctx.fillStyle = '#7fe3ff';
+      ctx.fillRect(x, sy, Math.round(w * Math.min(1, p.shield / CONFIG.tribes.future.shield)), 3);
+    }
     ctx.restore();
   },
 

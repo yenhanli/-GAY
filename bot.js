@@ -81,7 +81,7 @@ const Bots = {
       // 有目標：保持一段距離，左右繞著閃子彈
       const ux = (target.x - me.x) / best;
       const uy = (target.y - me.y) / best;
-      const { near, far } = TRIBES[me.tribe].bot;
+      const { near, far } = botPlan(me);
       const forward = best > far ? 1 : best < near ? -1 : 0;
       brain.strafeTimer -= step;
       if (brain.strafeTimer <= 0) {
@@ -137,7 +137,7 @@ const Bots = {
       input.mouseX = me.x + Math.cos(a) * best;
       input.mouseY = me.y + Math.sin(a) * best;
 
-      const plan = TRIBES[me.tribe].bot;
+      const plan = botPlan(me);
       const canShoot = brain.seenTime >= CONFIG.bot.reaction && clearShot(me, target);
       if (canShoot && best < plan.attackDist) input.shootPressed = true;
       if (canShoot && best < plan.superDist && me.super >= me.superMax) input.superPressed = true;
@@ -148,6 +148,12 @@ const Bots = {
     }
   },
 };
+
+// 這個部族的機器人怎麼打（部族檔裡的 bot 可以是固定的，也可以看狀況回傳，例如未來科技變身後）
+function botPlan(p) {
+  const plan = TRIBES[p.tribe].bot;
+  return typeof plan === 'function' ? plan(p) : plan;
+}
 
 // 從 a 到 b 中間有沒有牆擋住
 function clearShot(a, b) {

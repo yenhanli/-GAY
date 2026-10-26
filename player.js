@@ -35,6 +35,7 @@ function createPlayer(id, x, y, tribeId = 'basic') {
     superMax: stats.superHits,   // 打中幾次集滿大招
     angle: 0,          // 面向哪個方向（弧度），0 是正右邊
     super: 0,
+    shield: 0,         // 護盾：被打先扣這個（未來科技變身時才有）
     boostTime: 0,      // 加速還剩幾秒
     boostDir: { x: 0, y: 0 },
     inGrass: false,
@@ -150,8 +151,13 @@ const Player = {
     }
   },
 
-  // 被打中：扣血、閃白，血歸零就倒下（只有房主會呼叫）
+  // 被打中：先扣護盾、再扣血，閃白，血歸零就倒下（只有房主會呼叫）
   takeDamage(p, amount) {
+    if (p.shield > 0) {
+      const blocked = Math.min(p.shield, amount);
+      p.shield -= blocked;
+      amount -= blocked;
+    }
     p.hp = Math.max(0, p.hp - amount);
     p.sinceHit = 0;
     p.flash = CONFIG.player.flashTime;

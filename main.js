@@ -377,7 +377,7 @@ function dealDamage(attacker, target, dmg, charge) {
 
 // 子彈打中人：普攻子彈會集氣，大招子彈不會
 function onBulletHit(bullet, p) {
-  dealDamage(players[bullet.owner], p, bullet.damage, !bullet.isSuper);
+  dealDamage(players[bullet.owner], p, Bullets.damageOf(bullet), !bullet.isSuper);
 }
 
 // 還沒開打（倒數、回合結束、整局結束）：不能動、不能射，只能轉頭瞄準
@@ -445,6 +445,7 @@ function makeState(viewerId) {
       vy: Math.round(b.vy),
       traveled: Math.round(b.traveled),
       isSuper: b.isSuper,
+      kind: b.kind,
     })),
   };
 }
@@ -463,6 +464,8 @@ function packPlayer(p, visible) {
     tribe: p.tribe,
     slash: p.slashAnim > 0 ? Math.round(p.slashAnim * 100) / 100 : 0,   // 機甲剛砍下去
     spinning: p.spinTime > 0,                                          // 機甲在轉
+    mech: p.mechTime > 0,                                              // 未來科技變身中
+    shield: Math.round(p.shield),
   };
 }
 
@@ -495,6 +498,8 @@ function applyState(msg) {
     }
     if (s.slash > 0) p.slashAnim = s.slash;
     p.spinning = s.spinning;
+    p.mech = s.mech;
+    p.shield = s.shield;
     if (id !== myId) p.angle = s.angle;
   }
   const boosts = Arena.tiles.filter((t) => t.type === 'boost');
