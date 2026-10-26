@@ -1,2 +1,4 @@
 .claude/
 desktop.ini
+.wrangler/
+node_modules/

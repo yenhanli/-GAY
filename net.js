@@ -1,12 +1,13 @@
 // 連線：開房、加入、送收資料、斷線判定
-// 用 PeerJS 讓兩個瀏覽器直接連。房號 KBZQ → PeerJS 上的名字是 ROOM_PREFIX + 'KBZQ'。
+//
+// 兩台電腦都連到 Cloudflare 上的轉送伺服器（程式在 relay/worker.js），
+// 伺服器把一邊的訊息轉給另一邊。這樣不管兩邊在什麼網路都連得上。
+// 房號 KBZQ → 連到 轉送伺服器/room/KBZQ
 
-const ROOM_PREFIX = 'six-cell-brawl-v1-';
 const ROOM_LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';   // 拿掉 I 和 O，免得跟 1、0 搞混
 
 const Net = {
-  peer: null,
-  conn: null,
+  ws: null,
   isHost: false,
   connected: false,
   lastHeard: 0,        // 最後一次收到對方東西的時間（performance.now()）
@@ -24,38 +25,10 @@ const Net = {
     this.leave();
     this.isHost = true;
     const code = randomCode();
-    this.peer = new Peer(ROOM_PREFIX + code);
-
-    this.peer.on('open', () => onCode(code));
-
-    // 等人的時候跟 PeerJS 伺服器斷了（例如網路閃一下），不重連的話就沒人加得進來
-    this.peer.on('disconnected', () => {
-      if (this.peer && !this.peer.destroyed && !this.connected) this.peer.reconnect();
-    });
-
-    this.peer.on('connection', (conn) => {
-      // 已經有對手了，第二個人來就告訴他房間滿了
-      if (this.conn) {
-        conn.on('open', () => {
-          conn.send({ t: 'full' });
-          setTimeout(() => conn.close(), 500);
-        });
-        return;
-      }
-      this.setupConn(conn);
-      conn.on('open', () => {
-        conn.send({ t: 'welcome' });
-        this.markConnected();
-      });
-    });
-
-    this.peer.on('error', (err) => {
-      // 房號剛好被別人用走了，換一個再開
-      if (err.type === 'unavailable-id') {
-        this.createRoom(onCode);
-        return;
-      }
-      this.fail(errorText(err));
+    this.open(code, 'host', (ev) => {
+      if (ev === 'ready') onCode(code);
+      if (ev === 'taken') this.createRoom(onCode);   // 房號剛好有人在用，換一個再開
+      if (ev === 'joined') this.markConnected();
     });
   },
 
@@ -63,32 +36,54 @@ const Net = {
   joinRoom(code) {
     this.leave();
     this.isHost = false;
-    this.peer = new Peer();
-
-    this.peer.on('open', () => {
-      const conn = this.peer.connect(ROOM_PREFIX + code, { serialization: 'json' });
-      this.setupConn(conn);
-      // 8 秒還沒連上就放棄
-      this.joinTimer = setTimeout(() => {
-        if (!this.connected) this.fail('連不上這個房間，房號打錯了嗎？');
-      }, 8000);
+    this.open(code, 'guest', (ev) => {
+      if (ev === 'welcome') this.markConnected();
+      if (ev === 'not-found') this.fail('找不到這個房間，房號打錯了嗎？');
+      if (ev === 'full') this.fail('這個房間已經滿了');
     });
-
-    this.peer.on('error', (err) => this.fail(errorText(err)));
   },
 
-  setupConn(conn) {
-    this.conn = conn;
-    conn.on('data', (msg) => {
-      this.lastHeard = performance.now();
-      if (msg.t === 'full') {
-        this.fail('這個房間已經滿了');
-      } else if (msg.t === 'welcome') {
-        this.markConnected();
-      } else if (this.onMessage) {
-        this.onMessage(msg);
+  // 連到轉送伺服器的房間；onSys 處理伺服器自己說的話
+  open(code, role, onSys) {
+    let ws;
+    try {
+      ws = new WebSocket(CONFIG.net.relayUrl + '/room/' + code + '?role=' + role);
+    } catch (e) {
+      this.fail('連不到連線伺服器，檢查一下網路');
+      return;
+    }
+    this.ws = ws;
+
+    ws.onmessage = (e) => {
+      if (this.ws !== ws) return;   // 已經取消的舊連線
+      let msg;
+      try {
+        msg = JSON.parse(e.data);
+      } catch (err) {
+        return;
       }
-    });
+      this.lastHeard = performance.now();
+      if (msg.t === 'sys') onSys(msg.ev);
+      else if (this.onMessage) this.onMessage(msg);
+    };
+
+    // 還沒開打就斷了 → 一定是連不到伺服器；開打後斷了交給 isTimedOut 判斷
+    ws.onclose = () => {
+      if (this.ws === ws && !this.connected) this.fail('連不到連線伺服器，檢查一下網路');
+    };
+
+    // 房主等人等很久時，每 20 秒送一下，免得連線因為太安靜被關掉
+    const ping = setInterval(() => {
+      if (this.ws !== ws) clearInterval(ping);
+      else if (!this.connected) this.send({ t: 'ping' });
+    }, 20000);
+
+    // 8 秒還沒進房就放棄
+    this.joinTimer = setTimeout(() => {
+      if (this.ws === ws && !this.connected && role === 'guest') {
+        this.fail('連不到連線伺服器，再試一次看看');
+      }
+    }, 8000);
   },
 
   markConnected() {
@@ -99,7 +94,7 @@ const Net = {
   },
 
   send(msg) {
-    if (this.conn && this.conn.open) this.conn.send(msg);
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(msg));
   },
 
   // 超過 timeout 秒沒收到東西就算斷線
@@ -108,9 +103,7 @@ const Net = {
   },
 
   fail(text) {
-    // 已經在打了就不管這些錯誤（例如跟 PeerJS 伺服器斷了，但兩人之間還連著），
-    // 真的斷了會由 isTimedOut 抓到
-    if (this.connected) return;
+    if (this.connected) return;   // 已經在打了，斷線交給 isTimedOut
     this.leave();
     if (this.onError) this.onError(text);
   },
@@ -118,9 +111,9 @@ const Net = {
   // 關掉連線，回到什麼都沒連的狀態
   leave() {
     clearTimeout(this.joinTimer);
-    if (this.peer) this.peer.destroy();
-    this.peer = null;
-    this.conn = null;
+    const ws = this.ws;
+    this.ws = null;
+    if (ws) ws.close();
     this.connected = false;
     this.lastHeard = 0;
     this.remoteInput = { up: false, down: false, left: false, right: false, mouseX: 0, mouseY: 0 };
@@ -133,14 +126,4 @@ function randomCode() {
     code += ROOM_LETTERS[Math.floor(Math.random() * ROOM_LETTERS.length)];
   }
   return code;
-}
-
-// PeerJS 的錯誤 → 給玩家看的中文
-function errorText(err) {
-  if (err.type === 'peer-unavailable') return '找不到這個房間，房號打錯了嗎？';
-  if (err.type === 'network' || err.type === 'server-error' || err.type === 'socket-error') {
-    return '連不到連線伺服器，檢查一下網路';
-  }
-  if (err.type === 'browser-incompatible') return '這個瀏覽器不支援連線，換 Chrome 試試';
-  return '連線出錯了（' + err.type + '）';
 }

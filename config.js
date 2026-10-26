@@ -70,5 +70,7 @@ const CONFIG = {
     timeout: 5,            // 幾秒沒收到東西算斷線
     inputHeartbeat: 0.5,   // 對手就算沒按鍵，也每幾秒送一次，讓房主知道還在
     smoothing: 15,         // 對手那台把小人滑到新位置的快慢（越大越快、越不滑順）
+    // Cloudflare 上的轉送伺服器（程式在 relay/ 資料夾）
+    relayUrl: 'wss://six-cell-brawl-relay.yenhanli.workers.dev',
   },
 };
