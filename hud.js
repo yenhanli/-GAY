@@ -113,6 +113,35 @@ const Hud = {
     ctx.restore();
   },
 
+  // 左下：大招氣條，集滿會閃（畫面座標）
+  drawSuperBar(ctx, p) {
+    const full = CONFIG.super.hitsToCharge;
+    const ratio = Math.min(1, p.super / full);
+    const x = 20;
+    const y = ctx.canvas.height - 44;
+    const w = 220;
+    const h = 22;
+    const ready = ratio >= 1;
+    const blink = ready && Math.floor(performance.now() / 200) % 2 === 0;   // 每 0.2 秒換一次顏色
+
+    ctx.save();
+    ctx.fillStyle = '#3a2f22';
+    ctx.fillRect(x - 3, y - 3, w + 6, h + 6);
+    ctx.fillStyle = '#5a4a3a';
+    ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = ready ? (blink ? '#fff3a0' : '#ffd84a') : '#d9a520';
+    ctx.fillRect(x, y, Math.round(w * ratio), h);
+    // 一格一格的分隔線，看得出還差幾發
+    ctx.fillStyle = '#3a2f22';
+    for (let i = 1; i < full; i++) ctx.fillRect(x + Math.round((w * i) / full) - 1, y, 2, h);
+
+    ctx.font = 'bold 16px "Microsoft JhengHei", sans-serif';
+    ctx.textBaseline = 'bottom';
+    ctx.fillStyle = ready ? '#ffd84a' : '#f4ecd8';
+    ctx.fillText(ready ? '大招好了！按右鍵' : '大招', x, y - 6);
+    ctx.restore();
+  },
+
   drawPopups(ctx) {
     ctx.save();
     ctx.font = 'bold 20px monospace';

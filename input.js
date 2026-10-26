@@ -10,6 +10,7 @@ const Input = {
   leftButton: false,
   rightButton: false,
   shootPressed: false,   // 剛剛點了左鍵；射出去後會被改回 false，所以按住不會連射
+  superPressed: false,   // 剛剛點了右鍵（大招）
 
   init(canvas) {
     // 用 e.code 而不是 e.key：開著中文輸入法也認得到 WASD
@@ -21,6 +22,7 @@ const Input = {
       this.up = this.down = this.left = this.right = false;
       this.leftButton = this.rightButton = false;
       this.shootPressed = false;
+      this.superPressed = false;
     });
 
     canvas.addEventListener('mousemove', (e) => this.setMouse(canvas, e));
@@ -31,7 +33,10 @@ const Input = {
         this.leftButton = true;
         this.shootPressed = true;
       }
-      if (e.button === 2) this.rightButton = true;
+      if (e.button === 2) {
+        this.rightButton = true;
+        this.superPressed = true;
+      }
     });
     window.addEventListener('mouseup', (e) => {
       if (e.button === 0) this.leftButton = false;

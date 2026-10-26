@@ -3,9 +3,10 @@
 const Bullets = {
   list: [],   // 場上所有子彈
 
-  // shooter 往他面向的方向射一發
-  spawn(shooter) {
-    const a = shooter.angle;
+  // shooter 往 angle 方向射一發（沒給 angle 就是他面向的方向）
+  // isSuper：是不是大招的子彈（大招打中不會再集氣）
+  spawn(shooter, angle = shooter.angle, isSuper = false) {
+    const a = angle;
     const speed = CONFIG.attack.bulletSpeed;
     this.list.push({
       type: 'bullet',
@@ -15,7 +16,19 @@ const Bullets = {
       vx: Math.cos(a) * speed,
       vy: Math.sin(a) * speed,
       traveled: 0,                     // 已經飛了多遠
+      damage: isSuper ? CONFIG.super.damage : CONFIG.attack.damage,
+      isSuper,
     });
+  },
+
+  // 大招：一次射好幾發，排成扇形（例如 5 發、左右各 30 度 → 每發差 15 度）
+  spawnFan(shooter) {
+    const n = CONFIG.super.bullets;
+    const spread = (CONFIG.super.spread * Math.PI) / 180;
+    for (let i = 0; i < n; i++) {
+      const t = n === 1 ? 0 : i / (n - 1) * 2 - 1;   // -1 到 1
+      this.spawn(shooter, shooter.angle + t * spread, true);
+    }
   },
 
   // targets：可以被打中的小人（對手那台傳空的，因為打中誰由房主決定）
@@ -54,13 +67,14 @@ const Bullets = {
     this.list = this.list.filter((b) => !b.dead);
   },
 
-  // myId：自己的子彈畫藍色、對手的畫紅色
+  // myId：自己的子彈畫藍色、對手的畫紅色；大招的子彈是金色
   draw(ctx, myId) {
     const s = CONFIG.attack.bulletSize;
     for (const b of this.list) {
       ctx.fillStyle = '#3a2f22';
       ctx.fillRect(Math.round(b.x - s / 2) - 2, Math.round(b.y - s / 2) - 2, s + 4, s + 4);
-      ctx.fillStyle = b.owner === myId ? '#8fd3ff' : '#ff7a5a';
+      if (b.isSuper) ctx.fillStyle = b.owner === myId ? '#ffe066' : '#ffb03a';
+      else ctx.fillStyle = b.owner === myId ? '#8fd3ff' : '#ff7a5a';
       ctx.fillRect(Math.round(b.x - s / 2), Math.round(b.y - s / 2), s, s);
     }
   },

@@ -41,6 +41,7 @@ const Player = {
     // 倒下了就不能動、不能射
     if (p.dead) {
       input.shootPressed = false;
+      input.superPressed = false;
       return;
     }
 
@@ -104,6 +105,16 @@ const Player = {
       if (p.shootCooldown <= 0) {
         Bullets.spawn(p);
         p.shootCooldown = CONFIG.attack.cooldown;
+        p.revealTime = CONFIG.grass.revealAfterShot;
+      }
+    }
+
+    // 大招：集滿才能放，放完歸零；沒集滿按了就算了
+    if (input.superPressed) {
+      input.superPressed = false;
+      if (p.super >= CONFIG.super.hitsToCharge) {
+        Bullets.spawnFan(p);
+        p.super = 0;
         p.revealTime = CONFIG.grass.revealAfterShot;
       }
     }

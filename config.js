@@ -22,6 +22,14 @@ const CONFIG = {
     bulletSize: 8,       // 子彈畫多大（也是碰撞大小）
   },
 
+  // 大招（基本小人）
+  super: {
+    hitsToCharge: 5,     // 普攻打中幾發集滿
+    bullets: 5,          // 一次射幾發
+    spread: 30,          // 扇形往左右各張開幾度
+    damage: 20,          // 每發扣多少血
+  },
+
   // 小人配色（改這裡換顏色）
   colors: {
     hair: '#4a2c1a',

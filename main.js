@@ -102,6 +102,11 @@ Net.onMessage = (msg) => {
     Net.remoteInput.mouseY = msg.mouseY;
     Net.remoteInput.shootPressed = true;
   }
+  if (msg.t === 'super' && mode === 'host') {
+    Net.remoteInput.mouseX = msg.mouseX;
+    Net.remoteInput.mouseY = msg.mouseY;
+    Net.remoteInput.superPressed = true;
+  }
   if (msg.t === 'state' && mode === 'guest') applyState(msg);
   if (msg.t === 'hit' && mode === 'guest') showHit(msg.id, msg.dmg);
   if (msg.t === 'rematch' && mode === 'host') Round.pressRematch('guest');
@@ -132,7 +137,9 @@ function resetField() {
   Bullets.list = [];
   Hud.popups = [];
   Input.shootPressed = false;
+  Input.superPressed = false;
   Net.remoteInput.shootPressed = false;
+  Net.remoteInput.superPressed = false;
 }
 
 // 對手斷線：剩下的人獲勝，回首頁
@@ -162,8 +169,11 @@ function showHit(id, dmg) {
 
 // 子彈打中人（只有房主會算）
 function onBulletHit(bullet, p) {
-  const dmg = CONFIG.attack.damage;
+  const dmg = bullet.damage;
   Player.takeDamage(p, dmg);
+  // 普攻打中才集大招氣
+  const shooter = players[bullet.owner];
+  if (!bullet.isSuper) shooter.super = Math.min(CONFIG.super.hitsToCharge, shooter.super + 1);
   showHit(p.id, dmg);
   Net.send({ t: 'hit', id: p.id, dmg });
 }
@@ -173,6 +183,7 @@ function aimOnly(p, input, dt) {
   if (p.flash > 0) p.flash -= dt;
   p.angle = Math.atan2(input.mouseY - p.y, input.mouseX - p.x);
   input.shootPressed = false;
+  input.superPressed = false;
 }
 
 function updateHost(dt) {
@@ -214,6 +225,7 @@ function makeState() {
       vx: Math.round(b.vx),
       vy: Math.round(b.vy),
       traveled: Math.round(b.traveled),
+      isSuper: b.isSuper,
     })),
   };
 }
@@ -227,6 +239,7 @@ function packPlayer(p, visible) {
     inGrass: p.inGrass,
     hp: Math.round(p.hp),
     dead: p.dead,
+    super: p.super,
   };
 }
 
@@ -249,6 +262,7 @@ function applyState(msg) {
     p.inGrass = s.inGrass;
     p.hp = s.hp;
     p.dead = s.dead;
+    p.super = s.super;
     if (id !== myId) p.angle = s.angle;
   }
   const boosts = Arena.tiles.filter((t) => t.type === 'boost');
@@ -276,6 +290,10 @@ function updateGuest(dt) {
   if (Input.shootPressed) {
     Input.shootPressed = false;
     Net.send({ t: 'shoot', mouseX: Math.round(Input.mouseX), mouseY: Math.round(Input.mouseY) });
+  }
+  if (Input.superPressed) {
+    Input.superPressed = false;
+    Net.send({ t: 'super', mouseX: Math.round(Input.mouseX), mouseY: Math.round(Input.mouseY) });
   }
 
   // 按鍵有變才送；沒變也每 0.5 秒送一次，讓房主知道我還在
@@ -339,6 +357,7 @@ function draw() {
   // 比數和大字畫在畫面座標
   if (mode !== 'home') {
     Hud.drawScore(ctx, myId);
+    Hud.drawSuperBar(ctx, players[myId]);
     Hud.drawCenterText(ctx, myId);
   }
 }
