@@ -27,9 +27,16 @@ const Hud = {
     return this.myOrder;
   },
 
+  splashes: [],     // 蛋落地的圈圈
+
   // 在 (x, y) 飄一個字
   addPopup(x, y, text) {
     this.popups.push({ x, y, text, time: 0 });
+  },
+
+  // 蛋落地：在 (x, y) 畫一個往外擴散的圈
+  addSplash(x, y, r, boosted) {
+    this.splashes.push({ x, y, r, boosted, time: 0 });
   },
 
   update(dt) {
@@ -38,6 +45,18 @@ const Hud = {
       p.y -= 40 * dt;          // 慢慢往上飄
     }
     this.popups = this.popups.filter((p) => p.time < 0.8);   // 0.8 秒後消失
+    for (const s of this.splashes) s.time += dt;
+    this.splashes = this.splashes.filter((s) => s.time < 0.35);
+  },
+
+  drawSplashes(ctx) {
+    for (const s of this.splashes) {
+      const k = s.time / 0.35;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.r * (0.5 + 0.5 * k), 0, Math.PI * 2);
+      ctx.fillStyle = s.boosted ? 'rgba(157, 255, 122, ' + (0.5 * (1 - k)) + ')' : 'rgba(255, 247, 200, ' + (0.6 * (1 - k)) + ')';
+      ctx.fill();
+    }
   },
 
   // 小人頭上的血條；color：自己綠色、其他人用自己的顏色
@@ -182,7 +201,9 @@ const Hud = {
     ctx.font = 'bold 16px "Microsoft JhengHei", sans-serif';
     ctx.textBaseline = 'bottom';
     ctx.fillStyle = ready ? '#ffd84a' : '#f4ecd8';
-    ctx.fillText(ready ? '大招好了！按右鍵' : '大招', x, y - 6);
+    // 部族可以自己改這條的名字（例如 EGG 蛋叫「劑量」）
+    const label = TRIBES[p.tribe].superLabel || { name: '大招', ready: '大招好了！按右鍵' };
+    ctx.fillText(ready ? label.ready : label.name, x, y - 6);
     ctx.restore();
   },
 

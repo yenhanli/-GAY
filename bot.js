@@ -81,7 +81,8 @@ const Bots = {
       // 有目標：保持一段距離，左右繞著閃子彈
       const ux = (target.x - me.x) / best;
       const uy = (target.y - me.y) / best;
-      const { near, far } = botPlan(me);
+      const plan = botPlan(me);
+      const { near, far } = plan;
       const forward = best > far ? 1 : best < near ? -1 : 0;
       brain.strafeTimer -= step;
       if (brain.strafeTimer <= 0) {
@@ -90,6 +91,15 @@ const Bots = {
       }
       vx = ux * forward - uy * brain.strafe * 0.8;
       vy = uy * forward + ux * brain.strafe * 0.8;
+      // 中間有牆、射不到（丟蛋的除外）：照找路的路線繞過去，不要一直撞牆或在牆後面發呆
+      const blockedByWall = !clearShot(me, target);
+      if (blockedByWall && (forward > 0 || !plan.lob)) {
+        const goal = Arena.pathStep(me.x, me.y, target.x, target.y, me.r);
+        if (goal) {
+          vx = goal.x - me.x;
+          vy = goal.y - me.y;
+        }
+      }
     } else {
       // 沒看到人：隨便走走，大概往中間
       brain.wanderTimer -= step;
@@ -138,7 +148,8 @@ const Bots = {
       input.mouseY = me.y + Math.sin(a) * best;
 
       const plan = botPlan(me);
-      const canShoot = brain.seenTime >= CONFIG.bot.reaction && clearShot(me, target);
+      // 丟蛋會飛過牆（plan.lob），不用管中間有沒有牆
+      const canShoot = brain.seenTime >= CONFIG.bot.reaction && (plan.lob || clearShot(me, target));
       if (canShoot && best < plan.attackDist) input.shootPressed = true;
       if (canShoot && best < plan.superDist && me.super >= me.superMax) input.superPressed = true;
     } else {

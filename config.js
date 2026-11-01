@@ -66,6 +66,23 @@ const CONFIG = {
       sawTick: 0.3,        // 每幾秒嚕一次
       sawDamage: 12,       // 每次扣多少
     },
+    egg: {
+      hp: 100,
+      speed: 200,
+      superHits: 3,        // 劑量條：蛋打中 3 次就滿
+      cooldown: 0.6,       // 丟完要等幾秒才能再丟
+      throwRange: 400,     // 最遠丟多遠（丟到滑鼠點的位置）
+      flightTime: 0.6,     // 蛋在空中飛幾秒才落地
+      arcHeight: 70,       // 拋物線最高多高（只是畫的）
+      splashRadius: 40,    // 落地半徑多少內會被砸到
+      damage: 20,          // 砸到扣多少
+      boostedMul: 2,       // 劑量滿的那顆蛋：打中傷害變幾倍
+      critterHp: 30,       // 劑量滿的蛋沒打中 → 孵出小生物
+      critterSpeed: 150,
+      critterBite: 10,     // 每次咬多少
+      critterBiteEvery: 1, // 每幾秒咬一次
+      critterLife: 5,      // 活幾秒
+    },
   },
 
   // 小人配色（改這裡換顏色；部族自己的衣服顏色在 tribes/ 的檔案裡）

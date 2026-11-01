@@ -5,7 +5,8 @@
 //   colors              這個部族的衣服、鈕扣顏色
 //   cooldown            普攻完要等幾秒
 //   attack(p)           按左鍵時做什麼
-//   super(p)            大招集滿按右鍵時做什麼
+//   super(p)            大招集滿按右鍵時做什麼（可以不寫：沒有大招，例如 EGG 蛋）
+//   superLabel          （可以不寫）左下氣條的名字 { name, ready }
 //   busy(p)             （可以不寫）回傳 true 時不能普攻、不能放大招
 //   update(p, dt)       （可以不寫）每一幀要做的事，只有房主會跑
 //   drawWeapon(ctx, p)  （可以不寫）畫手上的武器；不寫就畫一隻手
@@ -117,8 +118,10 @@ const Player = {
       if (!Arena.blocked(p.x, p.y + stepY, p.r)) p.y += stepY;
     }
 
-    // 面向滑鼠
+    // 面向滑鼠；也記下滑鼠點在哪（丟蛋要丟到那裡）
     p.angle = Math.atan2(input.mouseY - p.y, input.mouseX - p.x);
+    p.aimX = input.mouseX;
+    p.aimY = input.mouseY;
 
     const under = Arena.tileAt(p.x, p.y);
     p.inGrass = !!under && under.type === 'grass';
@@ -140,10 +143,10 @@ const Player = {
       }
     }
 
-    // 大招：集滿才能放，放完歸零；沒集滿按了就算了
+    // 大招：集滿才能放，放完歸零；沒集滿按了就算了（沒有大招的部族按了也沒用）
     if (input.superPressed) {
       input.superPressed = false;
-      if (p.super >= p.superMax && !busy) {
+      if (tribe.super && p.super >= p.superMax && !busy) {
         tribe.super(p);
         p.super = 0;
         p.revealTime = CONFIG.grass.revealAfterShot;

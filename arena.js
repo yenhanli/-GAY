@@ -174,6 +174,52 @@ const Arena = {
     return false;
   },
 
+  // 找路：從 (fx, fy) 走到 (tx, ty) 的最短路線上，下一步要往哪裡走（回傳一個點）
+  // 把地圖當成一格一格，從目標那格往回擴散，就知道起點的下一格是哪一格。找不到路回傳 null
+  pathStep(fx, fy, tx, ty, radius) {
+    const T = CONFIG.arena.tile;
+    const cellOf = (x, y) => [
+      Math.floor((y + (this.rows * T) / 2) / T),
+      Math.floor((x + (this.cols * T) / 2) / T),
+    ];
+    const center = (r, c) => ({
+      x: (c + 0.5) * T - (this.cols * T) / 2,
+      y: (r + 0.5) * T - (this.rows * T) / 2,
+    });
+    const walkable = (r, c) => {
+      if (r < 0 || r >= this.rows || c < 0 || c >= this.cols) return false;
+      const t = this.grid[r][c];
+      if (t && t.type === 'wall') return false;
+      const p = center(r, c);
+      return this.insideHex(p.x, p.y, radius);
+    };
+    const [sr, sc] = cellOf(fx, fy);
+    const [er, ec] = cellOf(tx, ty);
+    if (sr === er && sc === ec) return { x: tx, y: ty };
+
+    const next = new Map();   // 某一格 → 往目標要走的下一格
+    const key = (r, c) => r * 1000 + c;
+    const queue = [[er, ec]];
+    next.set(key(er, ec), null);
+    const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+    while (queue.length) {
+      const [r, c] = queue.shift();
+      for (const [dr, dc] of dirs) {
+        const nr = r + dr;
+        const nc = c + dc;
+        if (next.has(key(nr, nc))) continue;
+        const isStart = nr === sr && nc === sc;
+        if (!isStart && !walkable(nr, nc)) continue;
+        // 斜著走時兩邊不能是牆（不然會卡在牆角）
+        if (dr && dc && (!walkable(r, nc) || !walkable(nr, c))) continue;
+        next.set(key(nr, nc), [r, c]);
+        if (isStart) return center(r, c);
+        queue.push([nr, nc]);
+      }
+    }
+    return null;
+  },
+
   update(dt) {
     for (const t of this.tiles) {
       if (t.type === 'boost' && t.cooldown > 0) t.cooldown -= dt;

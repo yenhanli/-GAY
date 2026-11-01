@@ -316,7 +316,9 @@ function resetField() {
     if (t.type === 'boost') t.cooldown = 0;
   }
   Bullets.list = [];
+  Critters.list = [];
   Hud.popups = [];
+  Hud.splashes = [];
   for (const id of ids) {
     const input = mode === 'host' ? inputOf(id) : id === myId ? Input : null;
     if (!input) continue;
@@ -354,13 +356,21 @@ function showHit(id, dmg) {
 
 // ===== 房主 =====
 
-// p 的敵人：還在場上、還站著的其他人（部族的近戰、陀螺會用到）
+// p 的敵人：還在場上、還站著的其他人，加上別人的小生物（部族的近戰、陀螺、蛋會用到）
 function enemiesOf(p) {
-  return activeIds().map((id) => players[id]).filter((t) => t !== p && !t.dead);
+  const people = activeIds().map((id) => players[id]).filter((t) => t !== p && !t.dead);
+  const critters = Critters.list.filter((c) => c.owner !== p.id && c.hp > 0);
+  return people.concat(critters);
 }
 
 // 打中人：扣血、閃白飄字、（charge 為 true 時）幫攻擊的人集大招氣。只有房主會算
 function dealDamage(attacker, target, dmg, charge) {
+  // 打到小生物：只扣牠的血（打小生物不集氣）
+  if (target.type === 'critter') {
+    target.hp -= dmg;
+    Hud.addPopup(target.x, target.y - 20, '-' + dmg);
+    return;
+  }
   if (target.dead) return;
   Player.takeDamage(target, dmg);
   if (charge && attacker) attacker.super = Math.min(attacker.superMax, attacker.super + 1);
@@ -375,9 +385,9 @@ function dealDamage(attacker, target, dmg, charge) {
   }
 }
 
-// 子彈打中人：普攻子彈會集氣，大招子彈不會
+// 子彈打中人：普攻子彈打中人會集氣，大招子彈不會
 function onBulletHit(bullet, p) {
-  dealDamage(players[bullet.owner], p, Bullets.damageOf(bullet), !bullet.isSuper);
+  dealDamage(players[bullet.owner], p, Bullets.damageOf(bullet), !bullet.isSuper && p.type === 'player');
 }
 
 // 還沒開打（倒數、回合結束、整局結束）：不能動、不能射，只能轉頭瞄準
@@ -397,8 +407,10 @@ function updateHost(dt) {
   if (Round.phase === 'fight') {
     Bots.update(dt);   // 機器人先「按按鍵」
     for (const p of active) Player.update(p, inputOf(p.id), dt);
-    // 倒下的人不會再被打中
-    Bullets.update(dt, active.filter((p) => !p.dead), onBulletHit);
+    Critters.update(dt);
+    // 倒下的人不會再被打中；小生物也會被子彈打到
+    const targets = active.filter((p) => !p.dead).concat(Critters.list);
+    Bullets.update(dt, targets, onBulletHit, eggLanded);
   } else {
     for (const p of active) aimOnly(p, inputOf(p.id), dt);
     Bullets.update(dt, [], null);   // 還在飛的子彈飛完
@@ -437,15 +449,21 @@ function makeState(viewerId) {
     players: packed,
     boosts: Arena.tiles.filter((t) => t.type === 'boost').map((t) => Math.max(0, Math.round(t.cooldown * 10) / 10)),
     // 子彈連速度一起送，對手那台在兩次狀態之間可以自己往前飛，看起來才順
-    bullets: Bullets.list.map((b) => ({
-      owner: b.owner,
-      x: Math.round(b.x),
-      y: Math.round(b.y),
-      vx: Math.round(b.vx),
-      vy: Math.round(b.vy),
-      traveled: Math.round(b.traveled),
-      isSuper: b.isSuper,
-      kind: b.kind,
+    bullets: Bullets.list.map((b) => b.kind === 'egg'
+      // 蛋：從哪丟、丟到哪、飛了多久，對手那台照著算位置
+      ? { kind: 'egg', id: b.id, owner: b.owner, sx: Math.round(b.sx), sy: Math.round(b.sy), tx: Math.round(b.tx), ty: Math.round(b.ty), t: Math.round(b.t * 100) / 100, boosted: b.boosted, x: Math.round(b.x), y: Math.round(b.y) }
+      : {
+        owner: b.owner,
+        x: Math.round(b.x),
+        y: Math.round(b.y),
+        vx: Math.round(b.vx),
+        vy: Math.round(b.vy),
+        traveled: Math.round(b.traveled),
+        isSuper: b.isSuper,
+        kind: b.kind,
+      }),
+    critters: Critters.list.map((c) => ({
+      type: 'critter', id: c.id, owner: c.owner, x: Math.round(c.x), y: Math.round(c.y), hp: c.hp, angle: Math.round(c.angle * 100) / 100,
     })),
   };
 }
@@ -504,7 +522,17 @@ function applyState(msg) {
   }
   const boosts = Arena.tiles.filter((t) => t.type === 'boost');
   boosts.forEach((t, i) => (t.cooldown = msg.boosts[i]));
-  Bullets.list = msg.bullets;
+  // 房主那邊已經落地、但自己這邊還沒飛完的蛋：當作落地，補畫落地的圈
+  const stillFlying = new Set(msg.bullets.filter((b) => b.kind === 'egg').map((b) => b.id));
+  for (const b of Bullets.list) {
+    if (b.kind === 'egg' && !stillFlying.has(b.id) && !Bullets.landed.has(b.id)) {
+      Bullets.landed.add(b.id);
+      Hud.addSplash(b.tx, b.ty, CONFIG.tribes.egg.splashRadius, b.boosted);
+    }
+  }
+  // 已經在自己這邊落地過的蛋不要再放回來（不然會砸兩次的特效）
+  Bullets.list = msg.bullets.filter((b) => !(b.kind === 'egg' && Bullets.landed.has(b.id)));
+  Critters.list = msg.critters;
 }
 
 function updateGuest(dt) {
@@ -588,7 +616,9 @@ function draw() {
       .filter((p) => !p.left && (mode === 'host' ? canSee(me, p) : !p.hidden));
     for (const p of others) Player.draw(ctx, p, Hud.colorOf(p.id).ring);
     Player.draw(ctx, me, Hud.colorOf(myId).ring);
+    Critters.draw(ctx);
     Bullets.draw(ctx);
+    Hud.drawSplashes(ctx);
     for (const p of others) Hud.drawHealthBar(ctx, p, Hud.colorOf(p.id).bar);
     Hud.drawHealthBar(ctx, me, Hud.colorOf(myId).bar);
     Hud.drawPopups(ctx);
